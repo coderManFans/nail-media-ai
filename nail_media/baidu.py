@@ -12,10 +12,14 @@ class ApiHzSearch:
             raise ValueError("Keyword or limit outside API bounds")
         try:
             response = self.client.post(self.endpoint,data={"id":self.user_id,"key":self.key,"words":keyword,"limit":limit,"page":1,"type":1},follow_redirects=False)
+            print('Baidu HTTP status:', response.status_code, flush=True)
             response.raise_for_status()
             data = response.json()
-        except Exception:
+        except Exception as exc:
+            print('Baidu request exception:', type(exc).__name__, flush=True)
             raise RuntimeError("Baidu search transport or response failure") from None
+        code = str(data.get("code"))
+        print("Baidu response diagnostics:", json.dumps({"code":code if code.isdigit() and len(code)<=8 else "unknown","res_type":type(data.get("res")).__name__}),flush=True)
         if str(data.get("code")) != "200" or not isinstance(data.get("res"),list):
             raise RuntimeError("Baidu search API rejected request")
         items = []
