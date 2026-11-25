@@ -1,0 +1,10 @@
+[
+  {
+    "id": "commons-smoke",
+    "platform": "commons",
+    "keyword": "nail art",
+    "limit": 5,
+    "interval_hours": 24,
+    "enabled": true
+  }
+]
