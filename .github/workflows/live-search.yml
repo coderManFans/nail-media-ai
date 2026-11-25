@@ -20,6 +20,7 @@ jobs:
           python -m nail_media.service --tasks config/baidu-smoke.json --once
           python -m nail_media.verify_smoke runtime/history.jsonl baidu-smoke
       - name: Search Commons
+        if: ${{ !cancelled() }}
         run: |
           python -m nail_media.service --tasks config/commons-smoke.json --once
           python -m nail_media.verify_smoke runtime/history.jsonl commons-smoke
