@@ -5,6 +5,16 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from datetime import datetime, timezone
 from .image_processing import inspect_image, similar
+from PIL import Image
+
+EXTENSIONS = {'JPEG': '.jpg', 'PNG': '.png', 'WEBP': '.webp'}
+
+def asset_path(images, sha):
+    for ext in ('', *EXTENSIONS.values()):
+        path = images / (sha + ext)
+        if path.is_file():
+            return path
+    return None
 
 def crawl_baidu(keyword, limit, directory):
     from icrawler.builtin import BaiduImageCrawler
@@ -34,9 +44,12 @@ def run_icrawler_task(task, catalog, root, crawl=crawl_baidu):
                     try:
                         info=inspect_image(path)
                         sha=info["sha256"]
+                        with Image.open(path) as im:
+                            ext=EXTENSIONS[im.format]
+                        target=images/(sha+ext)
                         rows=db.execute("SELECT sha256,phash FROM crawler_assets").fetchall()
-                        exact=next((s for s,p in rows if s==sha and (images/s).is_file()),None)
-                        near=next((s for s,p in rows if (images/s).is_file() and similar(p,info["phash"])),None) if not exact else None
+                        exact=next((s for s,p in rows if s==sha and asset_path(images,s) is not None),None)
+                        near=next((s for s,p in rows if asset_path(images,s) is not None and similar(p,info["phash"])),None) if not exact else None
                         if exact:
                             asset,match=exact,"exact"
                             report["duplicates"]+=1
@@ -45,8 +58,8 @@ def run_icrawler_task(task, catalog, root, crawl=crawl_baidu):
                             report["near_duplicates"]+=1
                         else:
                             asset,match=sha,"original"
-                            shutil.copyfile(path,images/sha)
-                            db.execute("INSERT OR REPLACE INTO crawler_assets VALUES (?,?,?)",(sha,info["phash"],json.dumps({**info,"path":str(images/sha)})))
+                            shutil.copyfile(path,target)
+                            db.execute("INSERT OR REPLACE INTO crawler_assets VALUES (?,?,?)",(sha,info["phash"],json.dumps({**info,"path":str(target)})))
                             report["downloaded"]+=1
                         cur=db.execute("INSERT OR IGNORE INTO crawler_observations VALUES (?,?,?,?,?)",("baidu",task["keyword"],sha,asset,match))
                         report["inserted"]+=cur.rowcount
