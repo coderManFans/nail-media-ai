@@ -1,0 +1,43 @@
+import argparse
+import json
+import os
+import time
+from pathlib import Path
+import httpx
+from .catalog import Catalog
+from .commons import CommonsCollector
+from .providers import ConfiguredSearch
+from .pipeline import run_task
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--tasks",default="runtime/tasks.json")
+    p.add_argument("--root",default="runtime")
+    p.add_argument("--once",action="store_true")
+    p.add_argument("--approved",help="JSON array of explicitly authorized direct media URLs")
+    a = p.parse_args()
+    root = Path(a.root)
+    tasks = json.loads(Path(a.tasks).read_text(encoding="utf-8"))
+    approved = set(json.loads(Path(a.approved).read_text())) if a.approved else set()
+    catalog = Catalog(root/"catalog.sqlite3")
+    due = {}
+    with httpx.Client(timeout=20,headers={"User-Agent":"NailMediaAI/0.1 ("+os.getenv("CRAWLER_CONTACT","https://github.com/coderManFans/nail-media-ai")+")"}) as client:
+        providers = {"commons":CommonsCollector(client)}
+        for platform in ("baidu","xiaohongshu","douyin"):
+            endpoint = os.getenv(platform.upper()+"_SEARCH_URL")
+            if endpoint:
+                providers[platform] = ConfiguredSearch(client,endpoint,platform,os.getenv(platform.upper()+"_SEARCH_TOKEN"))
+        while True:
+            for task in tasks:
+                if not task.get("enabled") or time.monotonic() < due.get(task["id"],0):
+                    continue
+                report = run_task(task,providers,catalog,client,root,approved)
+                print(json.dumps(report),flush=True)
+                due[task["id"]] = time.monotonic()+max(1,task["interval_hours"])*3600
+                time.sleep(3)
+            if a.once:
+                break
+            time.sleep(30)
+
+if __name__ == "__main__":
+    main()
