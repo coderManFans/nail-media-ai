@@ -1,7 +1,18 @@
 from dataclasses import dataclass, asdict
 from hashlib import sha256
-from urllib.parse import urlsplit, urljoin
+from urllib.parse import urlsplit, urljoin, parse_qsl
 from typing import Protocol
+import re
+
+# Only simple, non-secret image transformation parameters are retained.
+PUBLIC_IMAGE_PARAMS = {"w", "h", "width", "height", "q", "quality", "format", "fm", "fit", "resize", "size", "type", "f", "s"}
+def safe_image_query(query):
+    try:
+        pairs = parse_qsl(query, keep_blank_values=True, strict_parsing=True, max_num_fields=20)
+        return bool(pairs) and all(k.lower() in PUBLIC_IMAGE_PARAMS and re.fullmatch(r"[a-zA-Z0-9_,.-]{1,40}", v) for k,v in pairs)
+    except ValueError:
+        return False
+
 from bs4 import BeautifulSoup
 
 @dataclass(frozen=True)
@@ -16,7 +27,7 @@ class Media:
     def record(self):
         for url in (self.source_url, self.media_url):
             p = urlsplit(url)
-            if p.scheme != "https" or not p.hostname or p.username or p.password or p.query or p.fragment:
+            if p.scheme != "https" or not p.hostname or p.username or p.password or p.fragment or (p.query and not (url == self.media_url and self.media_type == "image" and safe_image_query(p.query))):
                 raise ValueError("Expected HTTPS URL without credentials, query or fragment")
         if self.media_type not in {"image", "video", "post"}:
             raise ValueError("Unsupported media type")
