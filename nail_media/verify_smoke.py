@@ -9,7 +9,7 @@ def verify(path, task_id):
         raise ValueError("No execution report for requested task")
     latest = matches[-1]
     if latest.get("status") != "success" or latest.get("found",0) <= 0:
-        raise ValueError("Live search did not return usable records: " + str(latest.get("status")))
+        raise ValueError("Live search did not return usable records: " + str({k:latest.get(k) for k in ("status","found","inserted","errors")}))
     return latest["found"]
 
 if __name__ == "__main__":
