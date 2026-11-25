@@ -27,7 +27,7 @@ def run_task(task, providers, catalog, client, root, approved_urls=()):
                     report["downloaded"] += 1
                 except Exception as exc:
                     report["errors"].append(type(exc).__name__)
-        report["status"] = "partial" if report["errors"] else "success"
+        report["status"] = "partial" if report["errors"] else ("success" if items else "empty_or_filtered")
     except LookupError as exc:
         if report.get("status") != "unconfigured":
             report["status"] = "failed"
