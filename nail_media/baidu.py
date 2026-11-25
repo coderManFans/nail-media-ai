@@ -21,6 +21,9 @@ class ApiHzSearch:
         code = str(data.get("code"))
         print("Baidu response diagnostics:", json.dumps({"code":code if code.isdigit() and len(code)<=8 else "unknown","res_type":type(data.get("res")).__name__}),flush=True)
         if str(data.get("code")) != "200" or not isinstance(data.get("res"),list):
+            message = str(data.get("msg") or data.get("message") or "").lower()
+            categories = {"rate_limit": ("频率","频次","限流","rate limit","次数"), "credentials": ("密钥","账号","认证","credential","key"), "parameter": ("参数","parameter"), "quota": ("余额","额度","quota"), "upstream": ("上游","维护","upstream")}
+            print("Baidu rejection category:", next((name for name,terms in categories.items() if any(term in message for term in terms)), "unknown"), flush=True)
             raise RuntimeError("Baidu search API rejected request")
         items = []
         stats = {"raw_count":len(data["res"]),"non_string":0,"invalid_url":0,"query_or_fragment":0,"non_https":0,"object_keys":[]}
