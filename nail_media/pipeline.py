@@ -3,11 +3,12 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from .download import download_image
+from .image_processing import similar
 
 def run_task(task, providers, catalog, client, root, approved_urls=()):
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
-    report = {"id":task["id"],"started":datetime.now(timezone.utc).isoformat(),"found":0,"inserted":0,"downloaded":0,"errors":[]}
+    report = {"id":task["id"],"started":datetime.now(timezone.utc).isoformat(),"found":0,"inserted":0,"downloaded":0,"duplicates":0,"near_duplicates":0,"not_approved":0,"errors":[]}
     try:
         if task["platform"] not in providers:
             report["status"] = "unconfigured"
@@ -19,15 +20,29 @@ def run_task(task, providers, catalog, client, root, approved_urls=()):
         with sqlite3.connect(catalog.path) as db:
             db.execute("CREATE TABLE IF NOT EXISTS image_files (media_id TEXT PRIMARY KEY, sha256 TEXT, phash TEXT, payload TEXT)")
             for item in items:
-                if item.media_type != "image" or item.media_url not in approved_urls:
+                if item.media_type != "image":
+                    continue
+                if item.media_url not in approved_urls:
+                    report["not_approved"] += 1
                     continue
                 try:
+                    if db.execute("SELECT 1 FROM image_files WHERE media_id=?", (item.record()["id"],)).fetchone():
+                        report["duplicates"] += 1
+                        continue
                     result = download_image(client,item.media_url,root/"images",authorized=True)
+                    hashes = db.execute("SELECT sha256, phash FROM image_files").fetchall()
+                    if any(sha == result["sha256"] for sha, phash in hashes):
+                        report["duplicates"] += 1
+                    elif any(similar(phash,result["phash"]) for sha, phash in hashes):
+                        report["near_duplicates"] += 1
                     db.execute("INSERT OR REPLACE INTO image_files VALUES (?,?,?,?)",(item.record()["id"],result["sha256"],result["phash"],json.dumps(result)))
                     report["downloaded"] += 1
                 except Exception as exc:
                     report["errors"].append(type(exc).__name__)
         report["status"] = "partial" if report["errors"] else ("success" if items else "empty_or_filtered")
+    except PermissionError:
+        report["status"] = "blocked"
+        report["errors"].append("PermissionError")
     except LookupError as exc:
         if report.get("status") != "unconfigured":
             report["status"] = "failed"
