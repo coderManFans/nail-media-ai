@@ -3,6 +3,7 @@ from urllib.parse import urlencode, urlsplit
 from urllib.robotparser import RobotFileParser
 from bs4 import BeautifulSoup
 from .collectors import Media
+from .image_crawler import RateLimiter, extract_images
 
 BASE = "https://image.baidu.com"
 AGENT = "NailMediaAI"
@@ -19,35 +20,17 @@ def check_permission(client,url):
         raise PermissionError("Search path disallowed by robots.txt")
 
 def parse_page(html,limit):
-    soup = BeautifulSoup(html,"html.parser")
-    items = []
-    seen = set()
-    for img in soup.select("img"):
-        url = img.get("data-src") or img.get("src") or ""
-        if url.startswith("//"):
-            url = "https:"+url
-        if url in seen or not url.startswith("https://"):
-            continue
-        # Only explicit result elements, not logos or navigation images.
-        if not img.find_parent(class_="imgitem"):
-            continue
-        item = Media(BASE+"/",url,"baidu",title=img.get("alt",""))
-        try:
-            item.record()
-        except ValueError:
-            continue
-        seen.add(url)
-        items.append(item)
-        if len(items)>=limit:
-            break
-    return items
+    return extract_images(html,BASE+"/","baidu",min(limit,20),".imgitem img")
 
 class NativeBaiduSearch:
     def __init__(self,client,browser=False):
         self.client,self.browser=client,browser
+        self.limiter=RateLimiter()
     def search(self,keyword,limit):
         url=search_url(keyword)
+        self.limiter.wait(url)
         check_permission(self.client,url)
+        self.limiter.wait(url)
         if self.browser:
             from .browser_engine import render
             html=render(url)
