@@ -1,0 +1,39 @@
+"""Documented third-party Baidu-source search API."""
+from urllib.parse import urlencode
+from .collectors import Media
+
+class ApiHzSearch:
+    endpoint = "https://cn.apihz.cn/api/img/apihzimgbaidu.php"
+    def __init__(self, client, user_id, key):
+        self.client, self.user_id, self.key = client,user_id,key
+    def search(self, keyword, limit):
+        if not 1 <= limit <= 100 or not 1 <= len(keyword) <= 10:
+            raise ValueError("Keyword or limit outside API bounds")
+        try:
+            response = self.client.post(self.endpoint,data={"id":self.user_id,"key":self.key,"words":keyword,"limit":limit,"page":1,"type":1},follow_redirects=False)
+            response.raise_for_status()
+            data = response.json()
+        except Exception:
+            raise RuntimeError("Baidu search transport or response failure") from None
+        if str(data.get("code")) != "200" or not isinstance(data.get("res"),list):
+            raise RuntimeError("Baidu search API rejected request")
+        items = []
+        for url in data["res"][:limit]:
+            if not isinstance(url,str):
+                continue
+            item = Media("https://image.baidu.com/",url,"baidu",title="")
+            try:
+                item.record()
+            except ValueError:
+                continue
+            items.append(item)
+        return items
+
+class FallbackSearch:
+    def __init__(self, primary, secondary):
+        self.primary,self.secondary = primary,secondary
+    def search(self, keyword, limit):
+        # Do not retry authentication errors, rate limits or access denials.
+        # Fall back only on a successful empty result.
+        items = self.primary.search(keyword,limit)
+        return items if items else self.secondary.search(keyword,limit)
