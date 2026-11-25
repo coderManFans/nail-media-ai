@@ -1,0 +1,6 @@
+# Collection service
+Generate tasks with python -m nail_media.tasks. Enable selected tasks manually. For a Commons smoke test add a task with platform commons, keyword nail art, limit 5, interval_hours 24, enabled true and unique id.
+Run python -m nail_media.service --once or omit --once for periodic execution. Scheduling is in-memory; restart resets due times. Reports are in runtime/history.jsonl.
+Baidu, Xiaohongshu and Douyin require an authorized gateway configured via BAIDU_SEARCH_URL, XIAOHONGSHU_SEARCH_URL, DOUYIN_SEARCH_URL and optional corresponding SEARCH_TOKEN. Gateway contract: GET keyword and limit, response {"items":[{"source_url":"https://...","media_url":"https://...","media_type":"image","title":"..."}]}. These are integration adapters, not native platform APIs.
+Downloads are restricted to explicitly approved Commons URLs listed in a JSON array passed with --approved. Other media remain metadata only.
+After verifying the data repository is private and metadata publication is permitted, run python -m nail_media.sync --checkout ../nail-media-data --confirm-authorized-private. This pushes metadata only, not binaries. The command does not independently verify visibility. Automatic invocation from scheduler is not enabled. 
