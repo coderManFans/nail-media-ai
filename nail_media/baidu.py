@@ -1,5 +1,6 @@
 """Documented third-party Baidu-source search API."""
-from urllib.parse import urlencode
+from urllib.parse import urlsplit
+import json
 from .collectors import Media
 
 class ApiHzSearch:
@@ -18,15 +19,28 @@ class ApiHzSearch:
         if str(data.get("code")) != "200" or not isinstance(data.get("res"),list):
             raise RuntimeError("Baidu search API rejected request")
         items = []
+        stats = {"raw_count":len(data["res"]),"non_string":0,"invalid_url":0,"query_or_fragment":0,"non_https":0,"object_keys":[]}
         for url in data["res"][:limit]:
+            if isinstance(url,dict):
+                stats["object_keys"] = sorted(set(stats["object_keys"]) | {k for k in url if k in {"url","image_url","imageUrl","thumbURL","objURL","middleURL","src","pic","title"}})
+                url = next((url[k] for k in ("image_url","imageUrl","url","objURL","middleURL","thumbURL","src","pic") if isinstance(url.get(k),str)),None)
             if not isinstance(url,str):
+                stats["non_string"] += 1
                 continue
             item = Media("https://image.baidu.com/",url,"baidu",title="")
             try:
                 item.record()
             except ValueError:
+                stats["invalid_url"] += 1
+                try:
+                    parsed = urlsplit(url)
+                    stats["query_or_fragment"] += int(bool(parsed.query or parsed.fragment))
+                    stats["non_https"] += int(parsed.scheme != "https")
+                except ValueError:
+                    pass
                 continue
             items.append(item)
+        print("Baidu search diagnostics: " + json.dumps({**stats,"accepted":len(items)}),flush=True)
         return items
 
 class FallbackSearch:
