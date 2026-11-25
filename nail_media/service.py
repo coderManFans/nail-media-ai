@@ -17,6 +17,7 @@ def main():
     p.add_argument("--root",default="runtime")
     p.add_argument("--once",action="store_true")
     p.add_argument("--approved",help="JSON array of explicitly authorized direct media URLs")
+    p.add_argument("--media-host",action="append",default=[],help="Explicitly approved media hostname; repeat as needed")
     a = p.parse_args()
     root = Path(a.root)
     tasks = json.loads(Path(a.tasks).read_text(encoding="utf-8"))
@@ -45,7 +46,7 @@ def main():
             for task in tasks:
                 if not task.get("enabled") or time.monotonic() < due.get(task["id"],0):
                     continue
-                report = run_task(task,providers,catalog,client,root,approved)
+                report = run_task(task,providers,catalog,client,root,approved,tuple(["upload.wikimedia.org"]+a.media_host))
                 print(json.dumps(report),flush=True)
                 due[task["id"]] = time.monotonic()+max(1,task["interval_hours"])*3600
                 time.sleep(3)
