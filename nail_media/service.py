@@ -8,6 +8,7 @@ from .catalog import Catalog
 from .commons import CommonsCollector
 from .providers import ConfiguredSearch
 from .pipeline import run_task
+from .baidu import ApiHzSearch, FallbackSearch
 
 def main():
     p = argparse.ArgumentParser()
@@ -27,6 +28,15 @@ def main():
             endpoint = os.getenv(platform.upper()+"_SEARCH_URL")
             if endpoint:
                 providers[platform] = ConfiguredSearch(client,endpoint,platform,os.getenv(platform.upper()+"_SEARCH_TOKEN"))
+        demo = os.getenv("APIHZ_PUBLIC_DEMO") == "1"
+        user_id = os.getenv("APIHZ_ID") or ("88888888" if demo else "")
+        key = os.getenv("APIHZ_KEY") or ("88888888" if demo else "")
+        if user_id and key:
+            api = ApiHzSearch(client,user_id,key)
+            if "baidu" not in providers:
+                providers["baidu"] = api
+            elif os.getenv("APIHZ_ALLOW_FALLBACK") == "1":
+                providers["baidu"] = FallbackSearch(providers["baidu"],api)
         while True:
             for task in tasks:
                 if not task.get("enabled") or time.monotonic() < due.get(task["id"],0):
