@@ -9,6 +9,7 @@ from .commons import CommonsCollector
 from .providers import ConfiguredSearch
 from .pipeline import run_task
 from .baidu import ApiHzSearch, FallbackSearch
+from .native_search import NativeBaiduSearch
 
 def main():
     p = argparse.ArgumentParser()
@@ -28,6 +29,9 @@ def main():
             endpoint = os.getenv(platform.upper()+"_SEARCH_URL")
             if endpoint:
                 providers[platform] = ConfiguredSearch(client,endpoint,platform,os.getenv(platform.upper()+"_SEARCH_TOKEN"))
+        native = os.getenv("BAIDU_NATIVE_MODE")
+        if native in {"http","browser"}:
+            providers["baidu"] = NativeBaiduSearch(client,browser=native=="browser")
         demo = os.getenv("APIHZ_PUBLIC_DEMO") == "1"
         user_id = os.getenv("APIHZ_ID") or ("88888888" if demo else "")
         key = os.getenv("APIHZ_KEY") or ("88888888" if demo else "")
