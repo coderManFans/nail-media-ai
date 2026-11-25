@@ -1,0 +1,10 @@
+[
+  {
+    "id": "baidu-smoke",
+    "platform": "baidu",
+    "keyword": "猫眼美甲",
+    "limit": 3,
+    "interval_hours": 24,
+    "enabled": true
+  }
+]
