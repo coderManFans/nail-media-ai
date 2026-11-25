@@ -1,6 +1,6 @@
 import httpx
 import json
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, quote, urlunsplit
 from .collectors import Media
 
 class CommonsCollector:
@@ -24,7 +24,17 @@ class CommonsCollector:
                 if not info.get("mime", "").startswith("image/"):
                     stats["non_image"] += 1
                     continue
-                item = Media(info["descriptionurl"], info["url"], "commons", title=page.get("title", ""))
+                title = page.get("title", "")
+                source = info["descriptionurl"]
+                if title.startswith("File:"):
+                    source = "https://commons.wikimedia.org/wiki/" + quote(title.replace(" ", "_"), safe=":")
+                media_url = info["url"]
+                # Wikimedia original file URLs use a canonical /wikipedia/commons/ path.
+                # Only remove a fragment (never a query or access credential).
+                parsed = urlsplit(media_url)
+                if parsed.scheme == "https" and parsed.netloc == "upload.wikimedia.org" and parsed.path.startswith("/wikipedia/commons/") and not parsed.query:
+                    media_url = urlunsplit(parsed._replace(fragment=""))
+                item = Media(source, media_url, "commons", title=title)
                 try:
                     item.record()
                 except ValueError:
