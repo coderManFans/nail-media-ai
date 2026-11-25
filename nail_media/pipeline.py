@@ -9,6 +9,9 @@ def run_task(task, providers, catalog, client, root, approved_urls=()):
     root.mkdir(parents=True, exist_ok=True)
     report = {"id":task["id"],"started":datetime.now(timezone.utc).isoformat(),"found":0,"inserted":0,"downloaded":0,"errors":[]}
     try:
+        if task["platform"] not in providers:
+            report["status"] = "unconfigured"
+            raise LookupError("Provider unavailable")
         provider = providers[task["platform"]]
         items = provider.search(task["keyword"],task["limit"])[:task["limit"]]
         report["found"] = len(items)
@@ -25,8 +28,10 @@ def run_task(task, providers, catalog, client, root, approved_urls=()):
                 except Exception as exc:
                     report["errors"].append(type(exc).__name__)
         report["status"] = "partial" if report["errors"] else "success"
-    except KeyError:
-        report["status"] = "unconfigured"
+    except LookupError as exc:
+        if report.get("status") != "unconfigured":
+            report["status"] = "failed"
+            report["errors"].append(type(exc).__name__)
     except Exception as exc:
         report["status"] = "failed"
         report["errors"].append(type(exc).__name__)
