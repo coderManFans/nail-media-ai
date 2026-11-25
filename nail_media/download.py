@@ -3,12 +3,12 @@ from tempfile import NamedTemporaryFile
 from urllib.parse import urlsplit
 from .image_processing import inspect_image
 
-def download_image(client, url, root, *, authorized=False, max_bytes=20_000_000):
+def download_image(client, url, root, *, authorized=False, max_bytes=20_000_000, allowed_hosts=("upload.wikimedia.org",)):
     if not authorized:
         raise PermissionError("Explicit download permission required")
     p = urlsplit(url)
-    if p.scheme != "https" or p.hostname != "upload.wikimedia.org" or p.username or p.password or p.port not in (None,443) or p.query or p.fragment:
-        raise ValueError("Only direct Commons media URLs are supported")
+    if p.scheme != "https" or p.hostname not in allowed_hosts or p.username or p.password or p.port not in (None,443) or p.query or p.fragment:
+        raise ValueError("Only approved direct HTTPS media hosts are supported")
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
     temp = None
