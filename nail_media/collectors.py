@@ -51,7 +51,7 @@ class HtmlCollector:
 
 def platform_for(url: str) -> str:
     host = (urlsplit(url).hostname or "").lower()
-    for name, domains in {"baidu": ["baidu.com"], "xiaohongshu": ["xiaohongshu.com", "xhslink.com"], "douyin": ["douyin.com", "iesdouyin.com"]}.items():
+    for name, domains in {"baidu": ["baidu.com"], "xiaohongshu": ["xiaohongshu.com", "xhslink.com"], "douyin": ["douyin.com", "iesdouyin.com"], "tiktok": ["tiktok.com"]}.items():
         if any(host == d or host.endswith("." + d) for d in domains):
             return name
     return "generic"
