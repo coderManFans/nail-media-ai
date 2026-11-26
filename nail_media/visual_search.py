@@ -10,6 +10,12 @@ from .video_assets import sha256_file
 DEFAULT_MODEL="ViT-B-32"
 DEFAULT_WEIGHTS="laion2b_s34b_b79k"
 
+def translate_query(text):
+    terms={"猫眼":"cat eye","法式":"French tips","渐变":"gradient","晕染":"marble","裸粉色":"nude pink","奶白色":"milky white","酒红色":"burgundy","奶茶色":"beige","碎钻":"rhinestones","珍珠":"pearls","杏仁甲":"almond nails","方圆甲":"squoval nails","短甲":"short nails","美甲":"nail art","粉色":"pink","红色":"red","蓝色":"blue","绿色":"green","黑色":"black","白色":"white","通勤":"office","婚礼":"wedding","简约":"minimalist"}
+    for term in sorted(terms,key=len,reverse=True):
+        text=text.replace(term," "+terms[term]+" ")
+    return " ".join(text.split())
+
 class Encoder:
     def __init__(self, model=DEFAULT_MODEL, weights=DEFAULT_WEIGHTS, device="auto"):
         import torch
@@ -25,7 +31,7 @@ class Encoder:
             return self.model.encode_image(self.transform(ImageOps.exif_transpose(image).convert("RGB")).unsqueeze(0).to(self.device)).float().cpu().numpy()[0]
     def text(self, text):
         with self.torch.inference_mode():
-            return self.model.encode_text(self.tokenizer([text]).to(self.device)).float().cpu().numpy()[0]
+            return self.model.encode_text(self.tokenizer([translate_query(text)]).to(self.device)).float().cpu().numpy()[0]
 
 def normalize(value):
     v=np.asarray(value,dtype="<f4")
