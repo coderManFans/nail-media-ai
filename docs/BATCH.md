@@ -51,7 +51,7 @@ sqlite3 runtime/baidu-batch/catalog.sqlite3 'SELECT platform,keyword,COUNT(*) FR
 python -m nail_media.archive --db runtime/baidu-batch/catalog.sqlite3 --checkout ../nail-media-data --confirm-authorized
 ```
 
-归档为完整替换，**不可直接将另一个独立运行目录的导出结果覆盖已有三张图片的归档**。要保留全部资产，应优先复用同一个主素材数据库或先实现安全合并，再进行 GitHub 同步。
+归档会按素材类型及 ID 与已有 JSONL **合并**，保留旧图片记录与关键词关联。归档只写本地数据仓库工作区，仍需人工审核后执行 git add / commit / push。
 
 ## 已知限制
 
