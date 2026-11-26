@@ -30,13 +30,21 @@ class Catalog:
             if {"video_assets", "video_sources"} <= tables:
                 for sha, payload in db.execute("SELECT sha256,payload FROM video_assets ORDER BY sha256"):
                     asset = json.loads(payload)
-                    sources = [
-                        json.loads(source_payload)
-                        for (source_payload,) in db.execute(
-                            "SELECT payload FROM video_sources WHERE asset_sha=? ORDER BY media_id",
-                            (sha,),
-                        )
-                    ]
+                    sources = []
+                    for (source_payload,) in db.execute(
+                        "SELECT payload FROM video_sources WHERE asset_sha=? ORDER BY media_id",
+                        (sha,),
+                    ):
+                        source = json.loads(source_payload)
+                        if "video_keywords" in tables:
+                            source["keywords"] = [
+                                row[0] for row in db.execute(
+                                    """SELECT keyword FROM video_keywords
+                                    WHERE platform=? AND platform_id=? ORDER BY keyword""",
+                                    (source.get("platform"), source.get("platform_id")),
+                                )
+                            ]
+                        sources.append(source)
                     record = {
                         "id": sha, "record_type": "video_asset",
                         "sha256": sha, "filename": asset["filename"],
