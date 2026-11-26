@@ -1,0 +1,38 @@
+{
+  "root": "../runtime/media-library",
+  "tasks": [
+    {
+      "id": "baidu-cat-eye",
+      "platform": "baidu",
+      "keyword": "猫眼美甲",
+      "limit": 3,
+      "interval_hours": 24,
+      "enabled": false
+    },
+    {
+      "id": "xhs-import",
+      "platform": "xiaohongshu",
+      "input": "../../MediaCrawler/data/nail-smoke/xhs",
+      "limit": 20,
+      "interval_hours": 24,
+      "enabled": true
+    },
+    {
+      "id": "dy-import",
+      "platform": "douyin",
+      "input": "../../MediaCrawler/data/nail-smoke/dy",
+      "limit": 20,
+      "interval_hours": 24,
+      "enabled": true
+    },
+    {
+      "id": "tiktok-nails",
+      "platform": "tiktok",
+      "keyword": "nail art",
+      "input": "../runtime/tiktok-links.json",
+      "limit": 5,
+      "interval_hours": 24,
+      "enabled": false
+    }
+  ]
+}
