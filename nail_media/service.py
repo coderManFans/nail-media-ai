@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 import httpx
 from .catalog import Catalog
+from .task_store import TaskStore
 from .commons import CommonsCollector
 from .providers import ConfiguredSearch
 from .pipeline import run_task
@@ -20,12 +21,21 @@ def main():
     p.add_argument("--approved",help="JSON array of explicitly authorized direct media URLs")
     p.add_argument("--media-host",action="append",default=[],help="Explicitly approved media hostname; repeat as needed")
     p.add_argument("--baidu-engine",choices=["icrawler","legacy"],default="icrawler")
+    p.add_argument("--status",action="store_true")
+    p.add_argument("--reset-task",help="Reset a failed or interrupted task; stop other workers first")
     a = p.parse_args()
     root = Path(a.root)
     tasks = json.loads(Path(a.tasks).read_text(encoding="utf-8"))
     approved = set(json.loads(Path(a.approved).read_text())) if a.approved else set()
     catalog = Catalog(root/"catalog.sqlite3")
-    due = {}
+    store = TaskStore(root/"tasks.sqlite3")
+    store.register(tasks)
+    if a.status:
+        print(json.dumps(store.rows(),ensure_ascii=False,indent=2))
+        return
+    if a.reset_task:
+        print("Reset tasks:",store.reset(a.reset_task))
+        return
     with httpx.Client(timeout=20,headers={"User-Agent":"NailMediaAI/0.1 ("+os.getenv("CRAWLER_CONTACT","https://github.com/coderManFans/nail-media-ai")+")"}) as client:
         providers = {"commons":CommonsCollector(client)}
         for platform in ("baidu","xiaohongshu","douyin"):
@@ -46,14 +56,14 @@ def main():
                 providers["baidu"] = FallbackSearch(providers["baidu"],api)
         while True:
             for task in tasks:
-                if not task.get("enabled") or time.monotonic() < due.get(task["id"],0):
+                if not task.get("enabled") or not store.claim(task["id"]):
                     continue
                 if task["platform"]=="baidu" and a.baidu_engine=="icrawler":
                     report = run_icrawler_task(task,catalog,root)
                 else:
                     report = run_task(task,providers,catalog,client,root,approved,tuple(["upload.wikimedia.org"]+a.media_host))
                 print(json.dumps(report),flush=True)
-                due[task["id"]] = time.monotonic()+max(1,task["interval_hours"])*3600
+                store.finish(task["id"],report["status"],task["interval_hours"])
                 time.sleep(3)
             if a.once:
                 break
