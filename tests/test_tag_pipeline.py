@@ -46,3 +46,28 @@ def test_v2_content_rules():
     missing = TagsV2.model_validate({**sample_v2(),"style_evidence":{}}).result()
     assert missing["need_review"]
     assert TagsV2.model_validate({**sample_v2(),"scenes":["婚礼"]}).result()["scenes"] == []
+
+
+def test_router():
+    from nail_media.tag_router import route
+    calls = []
+    def analyzer(image,model):
+        calls.append(model)
+        return sample_v2()
+    status,result = route(None,"primary","backup",analyzer)
+    assert status=="success" and calls==["primary"]
+    def fail_primary(image,model):
+        if model=="primary":
+            raise ValueError("bad output")
+        return sample_v2()
+    status,result = route(None,"primary","backup",fail_primary)
+    assert status=="review" and result["selected_model"]=="backup"
+    assert not result["recommendation_eligible"]
+
+def test_router_disagreement():
+    from nail_media.tag_router import route
+    def analyzer(image,model):
+        return {**sample_v2(),"confidence":0.5,"colors":["红色"]} if model=="primary" else sample_v2()
+    status,result = route(None,"primary","backup",analyzer)
+    assert status=="review" and "colors" in result["model_differences"]
+    assert len(result["model_attempts"])==2
