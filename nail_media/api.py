@@ -40,7 +40,7 @@ def create_app(root=None):
         return jobs.status()
     @app.post('/api/jobs')
     def start_job(body:JobInput, request:Request):
-        if os.environ.get('NAIL_MEDIA_ENABLE_WRITES')!='1' or request.headers.get('origin') not in ('http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:8000'):
+        if os.environ.get('NAIL_MEDIA_ENABLE_WRITES')!='1' or request.headers.get('origin') not in ('http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:5174','http://localhost:5174','http://127.0.0.1:8000'):
             raise HTTPException(403,'Local writes disabled or invalid origin')
         try:
             return jobs.start(body.kind,body.limit,body.authorized)
@@ -50,7 +50,7 @@ def create_app(root=None):
             raise HTTPException(400,str(exc))
     @app.put('/api/assets/{sha}/review')
     def manual_review(sha:str, body:TagsV2, request:Request):
-        if os.environ.get('NAIL_MEDIA_ENABLE_WRITES')!='1' or request.headers.get('origin') not in ('http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:8000'):
+        if os.environ.get('NAIL_MEDIA_ENABLE_WRITES')!='1' or request.headers.get('origin') not in ('http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:5174','http://localhost:5174','http://127.0.0.1:8000'):
             raise HTTPException(403,'Local writes disabled or invalid origin')
         result=body.result()
         try:
@@ -70,7 +70,7 @@ def create_app(root=None):
         return [{k:t.get(k) for k in ('id','platform','keyword','limit','interval_hours','enabled','mode')} for t in cfg['tasks']]
     @app.put('/api/collection')
     def update_collection(body:list[CollectionEdit],request:Request):
-        if os.environ.get('NAIL_MEDIA_ENABLE_WRITES')!='1' or request.headers.get('origin') not in ('http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:8000'):
+        if os.environ.get('NAIL_MEDIA_ENABLE_WRITES')!='1' or request.headers.get('origin') not in ('http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:5174','http://localhost:5174','http://127.0.0.1:8000'):
             raise HTTPException(403,'Local writes disabled or invalid origin')
         path=Path('config/collection.json')
         root.mkdir(parents=True,exist_ok=True)
