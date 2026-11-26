@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 
 from .catalog import Catalog
 from .collectors import Media
+from .video_assets import ingest_video
 
 VIDEO_RE = re.compile(r"^/(@[^/]+/video/|@_/video/)([0-9]{10,25})/?$")
 
@@ -79,7 +80,23 @@ def main():
     p.add_argument("--db", type=Path, help="Optional catalog database for source URL")
     a = p.parse_args()
     result = probe(a.url, download=a.download, root=a.root)
-    if a.db:
+    if a.db and a.download:
+        v = result["video"]
+        candidate = Path(a.root) / (v["platform_id"] + ".mp4")
+        if not candidate.is_file():
+            matches = [
+                p for p in Path(a.root).glob(v["platform_id"] + ".*")
+                if p.suffix.lower() in {".mp4", ".mov", ".webm", ".mkv"}
+            ]
+            if len(matches) != 1:
+                raise ValueError("Expected exactly one downloaded video")
+            candidate = matches[0]
+        result["asset"] = ingest_video(
+            candidate, v["source_url"], platform="tiktok",
+            root=a.root, db_path=a.db, title=v["title"],
+            platform_id=v["platform_id"],
+        )
+    elif a.db:
         v = result["video"]
         Catalog(a.db).add([
             Media(v["source_url"], v["source_url"], "tiktok", "video", v["title"])
