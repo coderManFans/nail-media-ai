@@ -4,6 +4,11 @@ type Item={image_sha:string;status?:string;score?:number;tags?:Record<string,any
 const pages=['数据总览','素材管理','智能检索','标签管理','AI审核中心','任务管理']
 const page=ref('数据总览'),busy=ref(false),error=ref('')
 const stats=ref<Record<string,number>>({}),items=ref<Item[]>([]),reviews=ref<any[]>([]),runs=ref<any[]>([]),steps=ref<any[]>([])
+const job=ref<any>({}),kind=ref('index'),jobLimit=ref(10),draft=ref('')
+async function refreshJob(){await action(async()=>{job.value=await request('/jobs')})}
+async function startJob(){await action(async()=>{job.value=await request('/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:kind.value,limit:jobLimit.value})})})}
+function openItem(item:Item){selected.value=item;const tags={...item.tags};for(const key of ['need_review','review_reasons','recommendation_eligible'])delete tags[key];draft.value=JSON.stringify(tags,null,2)}
+async function saveReview(){if(!selected.value)return;await action(async()=>{const tags=await request('/assets/'+selected.value!.image_sha+'/review',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(JSON.parse(draft.value))});selected.value!.tags=tags;selected.value!.status='manual';selected.value=null})}
 const total=ref(0),current=ref(1),state=ref(''),q=ref(''),color=ref(''),style=ref(''),shape=ref(''),include=ref(false),selected=ref<Item|null>(null)
 const names:Record<string,string>={crawler_assets:'图片素材',video_assets:'视频素材',image_clusters:'图片聚类',image_tags:'标签记录',image_vectors:'视觉向量',tag_review_queue:'复核任务'}
 const colors=['裸粉色','奶白色','酒红色','奶茶色','雾霾蓝','抹茶绿','焦糖棕','黑色','白色','红色','粉色','蓝色','绿色','紫色','金色','银色','透明']
@@ -24,7 +29,7 @@ async function load(){
  if(page.value==='数据总览') stats.value=await request('/statistics')
  else if(page.value==='素材管理'){const r=await request('/assets?'+new URLSearchParams({limit:'24',offset:String((current.value-1)*24),state:state.value}));items.value=r.items;total.value=r.total}
  else if(page.value==='AI审核中心') reviews.value=await request('/reviews')
- else if(page.value==='任务管理'){const r=await request('/pipeline');runs.value=r.runs;steps.value=r.steps}
+ else if(page.value==='任务管理'){const r=await request('/pipeline');runs.value=r.runs;steps.value=r.steps;job.value=await request('/jobs')}
  })
 }
 function navigate(p:string){page.value=p;items.value=[];current.value=1;void load()}
@@ -49,15 +54,15 @@ onMounted(load)
  <template v-if="page==='素材管理'||page==='智能检索'">
  <div class="panel toolbar" v-if="page==='素材管理'"><el-select v-model="state" placeholder="全部状态" clearable @change="current=1;load()"><el-option label="成功" value="success"/><el-option label="待审核" value="review"/><el-option label="失败" value="failed"/></el-select><span>共 {{total}} 张</span></div>
  <div class="panel toolbar" v-else><el-input v-model="q" placeholder="英文描述，例如 pink cat eye nails" @keyup.enter="search"/><el-select v-model="color" placeholder="颜色" clearable><el-option v-for="x in colors" :key="x" :value="x"/></el-select><el-select v-model="style" placeholder="款式" clearable><el-option v-for="x in styles" :key="x" :value="x"/></el-select><el-select v-model="shape" placeholder="甲型" clearable><el-option v-for="x in shapes" :key="x" :value="x"/></el-select><el-checkbox v-model="include">包含未审核</el-checkbox><el-button type="primary" @click="search">搜索</el-button><label class="upload">上传图片<input type="file" accept="image/jpeg,image/png,image/webp" @change="upload"/></label></div>
- <div class="gallery"><article v-for="item in items" :key="item.image_sha" @click="selected=item"><img :src="imageUrl(item.image_sha)" loading="lazy" alt="美甲素材"/><div class="meta"><el-tag size="small" v-if="item.status">{{item.status}}</el-tag><small v-if="item.score!==undefined">得分 {{item.score.toFixed(3)}}</small><p>{{item.tags?.description||item.image_sha.slice(0,12)}}</p><el-tag v-for="tag in [...(item.tags?.colors||[]),...(item.tags?.styles||[])]" :key="tag" size="small" effect="plain">{{tag}}</el-tag></div></article></div>
+ <div class="gallery"><article v-for="item in items" :key="item.image_sha" @click="openItem(item)"><img :src="imageUrl(item.image_sha)" loading="lazy" alt="美甲素材"/><div class="meta"><el-tag size="small" v-if="item.status">{{item.status}}</el-tag><small v-if="item.score!==undefined">得分 {{item.score.toFixed(3)}}</small><p>{{item.tags?.description||item.image_sha.slice(0,12)}}</p><el-tag v-for="tag in [...(item.tags?.colors||[]),...(item.tags?.styles||[])]" :key="tag" size="small" effect="plain">{{tag}}</el-tag></div></article></div>
  <el-empty v-if="!items.length" description="暂无匹配素材"/>
  <el-pagination v-if="page==='素材管理'" v-model:current-page="current" :page-size="24" :total="total" layout="prev,pager,next" @current-change="load"/>
  </template>
  <template v-if="page==='标签管理'"><div class="panel" v-for="group in [{name:'颜色',values:colors},{name:'款式',values:styles},{name:'甲型',values:shapes}]" :key="group.name"><h3>{{group.name}}</h3><el-tag v-for="x in group.values" :key="x" effect="plain">{{x}}</el-tag></div><p class="muted">当前为标签字典浏览，编辑功能尚未开放。</p></template>
  <template v-if="page==='AI审核中心'"><el-table :data="reviews"><el-table-column label="素材" width="100"><template #default="s"><img class="thumb" :src="imageUrl(s.row.image_sha)"/></template></el-table-column><el-table-column prop="state" label="状态"/><el-table-column prop="backup_model" label="复核模型"/><el-table-column label="异常或分歧"><template #default="s">{{s.row.detail.error||s.row.detail.differences?.join('、')||'—'}}</template></el-table-column></el-table><p class="muted">显示前100条复核记录，暂不支持人工修改。</p></template>
- <template v-if="page==='任务管理'"><h3>最近运行</h3><el-table :data="runs"><el-table-column prop="id" label="运行ID"/><el-table-column prop="state" label="状态"/></el-table><h3>最新运行阶段</h3><el-table :data="steps"><el-table-column prop="name" label="阶段"/><el-table-column prop="state" label="状态"/><el-table-column prop="seconds" label="耗时（秒）"/><el-table-column prop="payload" label="结果" show-overflow-tooltip/></el-table></template>
+ <template v-if="page==='任务管理'"><div class="panel"><h3>本地后台任务</h3><div class="toolbar"><el-select v-model="kind"><el-option label="向量生成" value="index"/><el-option label="AI标签" value="tags"/><el-option label="备用模型复核" value="review"/><el-option label="推荐规则" value="recommend"/></el-select><el-input-number v-model="jobLimit" :min="1" :max="100"/><el-button type="primary" :disabled="busy||job.state==='running'" @click="startJob">启动任务</el-button><el-button @click="refreshJob">刷新日志</el-button></div><p>状态：{{job.state||'idle'}}</p><pre>{{job.log||'暂无日志'}}</pre></div><h3>最近运行</h3><el-table :data="runs"><el-table-column prop="id" label="运行ID"/><el-table-column prop="state" label="状态"/></el-table><h3>最新运行阶段</h3><el-table :data="steps"><el-table-column prop="name" label="阶段"/><el-table-column prop="state" label="状态"/><el-table-column prop="seconds" label="耗时（秒）"/><el-table-column prop="payload" label="结果" show-overflow-tooltip/></el-table></template>
  </section></main>
- <el-dialog :model-value="!!selected" title="素材详情" width="min(720px,90vw)" @close="selected=null"><template v-if="selected"><img class="detail" :src="imageUrl(selected.image_sha)"/><pre>{{JSON.stringify(selected.tags,null,2)}}</pre></template></el-dialog>
+ <el-dialog :model-value="!!selected" title="素材详情" width="min(720px,90vw)" @close="selected=null"><template v-if="selected"><img class="detail" :src="imageUrl(selected.image_sha)"/><p>人工标签修正（JSON，保留原始AI结果）</p><el-input v-model="draft" type="textarea" :rows="14"/><el-button type="primary" :loading="busy" @click="saveReview">保存人工标签</el-button></template></el-dialog>
  </div>
 </template>
 <style>
