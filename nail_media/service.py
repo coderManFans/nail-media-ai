@@ -22,6 +22,7 @@ def main():
     p.add_argument("--media-host",action="append",default=[],help="Explicitly approved media hostname; repeat as needed")
     p.add_argument("--baidu-engine",choices=["icrawler","legacy"],default="icrawler")
     p.add_argument("--status",action="store_true")
+    p.add_argument("--recover-after",type=int,default=3600,help="Recover RUNNING tasks older than this many seconds")
     p.add_argument("--reset-task",help="Reset a failed or interrupted task; stop other workers first")
     a = p.parse_args()
     root = Path(a.root)
@@ -36,6 +37,7 @@ def main():
     if a.reset_task:
         print("Reset tasks:",store.reset(a.reset_task))
         return
+    print("Recovered stale tasks:", store.recover(a.recover_after), flush=True)
     with httpx.Client(timeout=20,headers={"User-Agent":"NailMediaAI/0.1 ("+os.getenv("CRAWLER_CONTACT","https://github.com/coderManFans/nail-media-ai")+")"}) as client:
         providers = {"commons":CommonsCollector(client)}
         for platform in ("baidu","xiaohongshu","douyin"):
@@ -58,12 +60,16 @@ def main():
             for task in tasks:
                 if not task.get("enabled") or not store.claim(task["id"]):
                     continue
-                if task["platform"]=="baidu" and a.baidu_engine=="icrawler":
-                    report = run_icrawler_task(task,catalog,root)
-                else:
-                    report = run_task(task,providers,catalog,client,root,approved,tuple(["upload.wikimedia.org"]+a.media_host))
-                print(json.dumps(report),flush=True)
-                store.finish(task["id"],report["status"],task["interval_hours"])
+                try:
+                    if task["platform"]=="baidu" and a.baidu_engine=="icrawler":
+                        report = run_icrawler_task(task,catalog,root)
+                    else:
+                        report = run_task(task,providers,catalog,client,root,approved,tuple(["upload.wikimedia.org"]+a.media_host))
+                    print(json.dumps(report,ensure_ascii=False),flush=True)
+                    store.finish(task["id"],report["status"],task["interval_hours"])
+                except Exception as exc:
+                    print(json.dumps({"id":task["id"],"status":"failed","error":type(exc).__name__}),flush=True)
+                    store.finish(task["id"],"failed",task["interval_hours"])
                 time.sleep(3)
             if a.once:
                 break
