@@ -31,3 +31,42 @@ class Tags(BaseModel):
                                or self.image_quality in ("low","unknown")
                                or bool(data["scenes"] or data["seasons"]) and self.inference_confidence < 0.65)
         return data
+
+
+class TagsV2(Tags):
+    content_type: Literal["finished","process","product","unrelated","unknown"]
+    nail_part: Literal["hand","foot","both","unknown"]
+    design_visibility: Literal["clear","partial","none","unknown"]
+    style_evidence: dict[str, str] = Field(max_length=6)
+
+    def result(self):
+        data = super().result()
+        issues = []
+        if self.is_nail_art != (self.content_type in ("finished","process")) and self.content_type != "unknown":
+            issues.append("content_type_conflict")
+        if self.content_type == "finished" and self.design_visibility != "clear":
+            issues.append("finished_design_not_clear")
+        if self.content_type == "finished" and not self.colors:
+            issues.append("missing_color")
+        for style in data["styles"]:
+            if not self.style_evidence.get(style,"").strip():
+                issues.append("missing_style_evidence:" + style)
+        if "纯色" in data["styles"] and set(data["styles"]) & {"渐变","晕染","法式"}:
+            issues.append("potential_style_conflict")
+        if {"亮面","哑光"} <= set(data["finish"]):
+            issues.append("mixed_finish_review")
+        if self.content_type != "finished" or self.design_visibility != "clear":
+            for key in ("colors","styles","decorations","finish"):
+                data[key] = []
+            data["nail_shape"] = data["nail_length"] = "未知"
+            data["style_evidence"] = {}
+        else:
+            data["style_evidence"] = {k:v for k,v in self.style_evidence.items() if k in data["styles"]}
+        data["scenes"] = []
+        data["seasons"] = []
+        data["inference_evidence"] = ""
+        data["inference_confidence"] = 0.0
+        data["review_reasons"] = issues
+        data["need_review"] = bool(issues or self.content_type == "unknown" or self.confidence < 0.75 or self.image_quality in ("low","unknown"))
+        data["recommendation_eligible"] = bool(self.is_nail_art and self.content_type == "finished" and self.design_visibility == "clear" and not data["need_review"])
+        return data
