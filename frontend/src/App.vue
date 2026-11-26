@@ -1,9 +1,18 @@
 <script setup lang="ts">
 import {ref,onMounted} from 'vue'
+import {ElMessageBox,ElMessage} from 'element-plus'
 type Item={image_sha:string;status?:string;score?:number;tags?:Record<string,any>}
 const pages=['数据总览','素材管理','智能检索','标签管理','AI审核中心','任务管理','采集配置']
 const page=ref('数据总览'),busy=ref(false),error=ref('')
 const stats=ref<Record<string,number>>({}),items=ref<Item[]>([]),reviews=ref<any[]>([]),runs=ref<any[]>([]),steps=ref<any[]>([])
+type DictTag={category:string;code:string;label:string;enabled:boolean|number;builtin:boolean|number}
+const dictionary=ref<DictTag[]>([])
+const dictGroups=[{name:'颜色',category:'colors'},{name:'款式',category:'styles'},{name:'甲型',category:'nail_shape'}]
+const dictDraft=ref({category:'colors',code:'',label:'',enabled:true,operation:'create'})
+const dictOpen=ref(false)
+function editTag(category:string,t?:DictTag){dictDraft.value={category,code:t?.code||'',label:t?.label||'',enabled:t?!!t.enabled:true,operation:t?'update':'create'};dictOpen.value=true}
+async function saveTag(){await action(async()=>{const d=dictDraft.value;dictionary.value=await request('/tag-dictionary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...d,code:d.operation==='create'?d.label.trim():d.code})});dictOpen.value=false;ElMessage.success('保存成功')})}
+async function deleteTag(t:DictTag){try{await ElMessageBox.confirm(t.builtin?'内置标签将停用，保留历史识别值。':'确认删除自定义标签？','确认操作')}catch{return}await action(async()=>{dictionary.value=await request('/tag-dictionary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({category:t.category,code:t.code,operation:'delete'})});ElMessage.success('操作成功')})}
 const collection=ref<any[]>([]),authorized=ref(false),schema=ref<Record<string, any>>({}),formTags=ref<Record<string,any>>({}),advanced=ref(false)
 async function saveCollection(){await action(async()=>{collection.value=await request('/collection',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(collection.value.map(t=>({...t,keyword:t.keyword||''})))})})}
 const job=ref<any>({}),kind=ref('index'),jobLimit=ref(10),draft=ref('')
@@ -28,7 +37,8 @@ async function action(fn:()=>Promise<void>){
 }
 async function load(){
  await action(async()=>{
- if(page.value==='采集配置') collection.value=await request('/collection')
+ if(page.value==='标签管理') dictionary.value=await request('/tag-dictionary')
+ else if(page.value==='采集配置') collection.value=await request('/collection')
  else if(page.value==='数据总览') stats.value=await request('/statistics')
  else if(page.value==='素材管理'){const r=await request('/assets?'+new URLSearchParams({limit:'24',offset:String((current.value-1)*24),state:state.value}));items.value=r.items;total.value=r.total}
  else if(page.value==='AI审核中心') reviews.value=await request('/reviews')
@@ -61,7 +71,7 @@ onMounted(load)
  <el-empty v-if="!items.length" description="暂无匹配素材"/>
  <el-pagination v-if="page==='素材管理'" v-model:current-page="current" :page-size="24" :total="total" layout="prev,pager,next" @current-change="load"/>
  </template>
- <template v-if="page==='标签管理'"><div class="panel" v-for="group in [{name:'颜色',values:colors},{name:'款式',values:styles},{name:'甲型',values:shapes}]" :key="group.name"><h3>{{group.name}}</h3><el-tag v-for="x in group.values" :key="x" effect="plain">{{x}}</el-tag></div><p class="muted">当前为标签字典浏览，编辑功能尚未开放。</p></template>
+ <template v-if="page==='标签管理'"><div class="panel" v-for="group in dictGroups" :key="group.category"><div class="toolbar"><h3>{{group.name}}</h3><el-button type="primary" size="small" @click="editTag(group.category)">新增标签</el-button></div><el-table :data="dictionary.filter(t=>t.category===group.category)"><el-table-column prop="label" label="显示名称"/><el-table-column prop="code" label="原始编码"/><el-table-column label="类型"><template #default="s">{{s.row.builtin?'内置':'自定义'}}</template></el-table-column><el-table-column label="状态"><template #default="s">{{s.row.enabled?'启用':'停用'}}</template></el-table-column><el-table-column label="操作" width="180"><template #default="s"><el-button link type="primary" @click="editTag(group.category,s.row)">编辑</el-button><el-button link type="danger" @click="deleteTag(s.row)">{{s.row.builtin?'停用':'删除'}}</el-button></template></el-table-column></el-table></div><p class="muted">字典维护独立于 AI 固定识别枚举，自定义标签暂不参与识别或素材标注。</p><el-dialog v-model="dictOpen" title="标签维护" width="420px"><el-input v-model="dictDraft.label" placeholder="标签名称"/><p><el-switch v-model="dictDraft.enabled" active-text="启用"/></p><template #footer><el-button @click="dictOpen=false">取消</el-button><el-button type="primary" :loading="busy" @click="saveTag">保存</el-button></template></el-dialog></template>
  <template v-if="page==='AI审核中心'"><el-table :data="reviews"><el-table-column label="素材" width="100"><template #default="s"><img class="thumb" :src="imageUrl(s.row.image_sha)"/></template></el-table-column><el-table-column prop="state" label="状态"/><el-table-column prop="backup_model" label="复核模型"/><el-table-column label="异常或分歧"><template #default="s">{{s.row.detail.error||s.row.detail.differences?.join('、')||'—'}}</template></el-table-column></el-table><p class="muted">显示前100条复核记录，暂不支持人工修改。</p></template>
  <template v-if="page==='采集配置'"><div class="panel" v-for="t in collection" :key="t.id"><h3>{{t.platform}} / {{t.id}}</h3><div class="toolbar"><el-switch v-model="t.enabled"/><el-input v-model="t.keyword" placeholder="关键词（导入任务不按关键词搜索）"/><span>数量</span><el-input-number v-model="t.limit" :min="1" :max="20"/><span>周期（小时）</span><el-input-number v-model="t.interval_hours" :min="1" :max="8760"/></div></div><el-button type="primary" @click="saveCollection">保存配置</el-button><p>仅修改已有任务；采集需在 production.json 启用 collect。</p></template><template v-if="page==='任务管理'"><div class="panel"><h3>本地后台任务</h3><div class="toolbar"><el-select v-model="kind"><el-option label="向量生成" value="index"/><el-option label="AI标签" value="tags"/><el-option label="备用模型复核" value="review"/><el-option label="推荐规则" value="recommend"/><el-option label="完整流水线" value="pipeline"/><el-option label="断点恢复" value="resume"/></el-select><el-checkbox v-model="authorized">确认已获采集授权</el-checkbox><el-input-number v-model="jobLimit" :min="1" :max="100"/><el-button type="primary" :disabled="busy||job.state==='running'" @click="startJob">启动任务</el-button><el-button @click="refreshJob">刷新日志</el-button></div><p>状态：{{job.state||'idle'}}</p><pre>{{job.log||'暂无日志'}}</pre></div><h3>最近运行</h3><el-table :data="runs"><el-table-column prop="id" label="运行ID"/><el-table-column prop="state" label="状态"/></el-table><h3>最新运行阶段</h3><el-table :data="steps"><el-table-column prop="name" label="阶段"/><el-table-column prop="state" label="状态"/><el-table-column prop="seconds" label="耗时（秒）"/><el-table-column prop="payload" label="结果" show-overflow-tooltip/></el-table></template>
  </section></main>
