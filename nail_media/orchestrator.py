@@ -7,6 +7,8 @@ from .catalog import Catalog
 from .task_store import TaskStore
 from .icrawler_engine import run_icrawler_task
 from .mediacrawler_import import import_batch
+from .mediacrawler_runner import collect
+from .sync import sync
 from .tiktok_batch import run_batch
 from .tiktok_discovery import discover, ManifestProvider
 
@@ -23,8 +25,9 @@ def load_config(path):
         ids.add(task["id"])
         if not 1 <= task["limit"] <= 20 or task.get("interval_hours",24) < 1:
             raise ValueError("Invalid task limits")
-        if "input" in task:
-            task["input"] = str((path.parent / task["input"]).resolve())
+        for key in ("input","project"):
+            if key in task:
+                task[key] = str((path.parent / task[key]).resolve())
     return root, tasks
 
 
@@ -32,6 +35,8 @@ def execute(task, root):
     platform = task["platform"]
     if platform == "baidu":
         return run_icrawler_task(task, Catalog(root / "catalog.sqlite3"), root)
+    if platform in {"douyin","xiaohongshu"} and task.get("mode") == "detail":
+        return collect(task, root)
     source = Path(task["input"])
     if not source.exists():
         return {"status":"unconfigured","errors":["missing_input"]}
@@ -72,7 +77,11 @@ def main():
     p.add_argument("--status",action="store_true")
     p.add_argument("--reset-task")
     p.add_argument("--confirm-authorized",action="store_true")
+    p.add_argument("--sync-checkout",type=Path)
+    p.add_argument("--confirm-authorized-private",action="store_true")
     a = p.parse_args()
+    if a.sync_checkout and not a.confirm_authorized_private:
+        p.error("Confirm permission for private metadata archive")
     root,tasks = load_config(a.config)
     store = TaskStore(root / "collection-tasks.sqlite3")
     store.register(tasks)
@@ -85,11 +94,25 @@ def main():
     if not a.confirm_authorized:
         p.error("Confirm permission to collect and retain media")
     store.recover()
+    next_sync = 0
     while True:
         results = run_cycle(tasks,root,store)
         print(json.dumps(results,ensure_ascii=False,indent=2),flush=True)
+        sync_failed = False
+        if a.sync_checkout and time.monotonic() >= next_sync:
+            try:
+                count = sync(root / "catalog.sqlite3",a.sync_checkout,confirmed=True)
+                event = {"status":"success","records":count}
+                next_sync = time.monotonic() + 3600
+            except Exception as exc:
+                event = {"status":"failed","error":type(exc).__name__}
+                sync_failed = True
+                next_sync = time.monotonic() + 120
+            with (root / "sync-history.jsonl").open("a",encoding="utf-8") as fp:
+                fp.write(json.dumps(event)+"\n")
+            print(json.dumps(event),flush=True)
         if a.once:
-            return int(any(r["status"] not in {"success","empty_or_filtered"} for r in results))
+            return int(sync_failed or any(r["status"] not in {"success","empty_or_filtered"} for r in results))
         time.sleep(30)
 
 
