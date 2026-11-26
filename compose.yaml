@@ -1,0 +1,20 @@
+services:
+  api:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./runtime:/app/runtime
+      - hf-cache:/root/.cache/huggingface
+    environment:
+      NAIL_MEDIA_ROOT: /app/runtime/media-library
+  frontend:
+    build: ./frontend
+    ports:
+      - "127.0.0.1:5173:5173"
+    environment:
+      API_TARGET: http://api:8000
+    depends_on:
+      - api
+volumes:
+  hf-cache:
