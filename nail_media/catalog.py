@@ -55,6 +55,21 @@ class Catalog:
                         "sources": sources,
                     }
                     rows.append((json.dumps(record, ensure_ascii=False),))
+            if {"imported_posts", "imported_post_assets"} <= tables:
+                for key, payload in db.execute("SELECT platform_id,payload FROM imported_posts ORDER BY platform_id"):
+                    post = json.loads(payload)
+                    record = {k: post.get(k) for k in (
+                        "platform", "platform_id", "source_url", "title",
+                        "keyword", "post_type", "published_at")}
+                    record.update(id=post["platform"] + ":" + post["platform_id"],
+                                  record_type="post", license_status="unknown")
+                    record["assets"] = [
+                        {"sha256": sha, "kind": kind}
+                        for sha, kind in db.execute(
+                            "SELECT sha256,kind FROM imported_post_assets WHERE platform_id=? ORDER BY kind,sha256",
+                            (key,))
+                    ]
+                    rows.append((json.dumps(record, ensure_ascii=False),))
         temp = path.with_suffix(".tmp")
         temp.write_text("".join(r[0] + "\n" for r in rows), encoding="utf-8")
         temp.replace(path)
