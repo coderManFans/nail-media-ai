@@ -45,6 +45,16 @@ def test_batch_idempotency_and_keywords(tmp_path):
         assert db.execute("SELECT COUNT(*) FROM video_keywords").fetchone()[0] == 3
         assert db.execute("SELECT COUNT(*) FROM video_sources").fetchone()[0] == 2
     assert [r["state"] for r in task_status(tmp_path)] == ["success", "success"]
+    from nail_media.catalog import Catalog
+    export = tmp_path / "catalog.jsonl"
+    Catalog(tmp_path / "catalog.sqlite3").export(export)
+    entries = [json.loads(line) for line in export.read_text().splitlines()]
+    linked = [
+        source for item in entries if item.get("record_type") == "video_asset"
+        for source in item["sources"] if source["platform_id"] == a
+    ]
+    assert len(linked) == 1
+    assert linked[0]["keywords"] == ["cat eye nails", "wedding nails"]
 
 
 def test_failure_isolation_and_explicit_retry(tmp_path):
