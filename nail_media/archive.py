@@ -24,6 +24,15 @@ def merge_records(existing, incoming):
             item = {**previous, **item, "observations": [
                 observations[name] for name in sorted(observations)
             ]}
+        if previous is not None and key[0] == "video_asset":
+            if previous.get("sha256") != item.get("sha256"):
+                raise ValueError("Conflicting video identity")
+            sources = {}
+            for source in [*previous.get("sources", []), *item.get("sources", [])]:
+                sources[source["media_id"]] = source
+            item = {**previous, **item, "sources": [
+                sources[name] for name in sorted(sources)
+            ]}
         merged[key] = item
     return [merged[k] for k in sorted(merged)]
 
