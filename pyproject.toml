@@ -2,7 +2,7 @@
 name = "nail-media-ai"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["httpx>=0.27,<1", "beautifulsoup4>=4.12,<5", "Pillow>=10,<13", "ImageHash>=4.3,<5", "scrapy>=2.13,<3"]
+dependencies = ["httpx>=0.27,<1", "beautifulsoup4>=4.12,<5", "Pillow>=10,<13", "ImageHash>=4.3,<5", "scrapy>=2.13,<3", "pydantic>=2.10,<3"]
 [project.optional-dependencies]
 test = ["pytest>=8,<10"]
 crawler = ["icrawler==0.6.10"]
