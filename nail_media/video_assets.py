@@ -28,8 +28,8 @@ def sha256_file(path: Path) -> str:
 
 
 def validate_source(source_url: str, platform: str):
-    if platform not in {"tiktok", "douyin"}:
-        raise ValueError("Only TikTok and Douyin video sources are supported")
+    if platform not in {"tiktok", "douyin", "xiaohongshu"}:
+        raise ValueError("Unsupported video source platform")
     if platform_for(source_url) != platform:
         raise ValueError("Source URL does not match platform")
     parts = urlsplit(source_url)
