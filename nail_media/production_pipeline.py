@@ -16,6 +16,8 @@ def validate(root):
         checks=[
             ("video_frames","crawler_assets","image_sha","sha256"),
             ("video_frames","video_assets","video_sha","sha256"),
+            ("manual_tags","crawler_assets","image_sha","sha256"),
+            ("image_vectors","crawler_assets","image_sha","sha256"),
             ("image_tags","crawler_assets","image_sha","sha256"),
             ("image_cluster_members","image_clusters","cluster_id","cluster_id"),
             ("image_cluster_members","crawler_assets","image_sha","sha256"),
@@ -110,6 +112,9 @@ def build(path, authorized=False, private=False):
         ("validate",lambda:validate(root)),
         ("export",lambda:{"records":Catalog(root/"catalog.sqlite3").export(root/"catalog.jsonl")}),
     ])
+    if cfg.get("vector_limit",0):
+        from .visual_search import Encoder,index
+        stages.insert(next(i for i,s in enumerate(stages) if s[0]=="validate"),("vectors",lambda:index(root,Encoder(),cfg["vector_limit"])))
     if cfg.get("sync_checkout"):
         if not private:
             raise PermissionError("Confirm private archive authorization")
@@ -137,7 +142,7 @@ def main():
         result=execute(root,stages,resume=a.resume,identity=identity)
         print(json.dumps(result,ensure_ascii=False,indent=2),flush=True)
         if not a.daemon or result["state"] not in ("success","success_with_warnings"):
-            return int(result["state"]!="success")
+            return int(result["state"] not in ("success","success_with_warnings"))
         time.sleep(max(60,cfg.get("interval_seconds",3600)))
 
 if __name__=="__main__":
