@@ -5,6 +5,7 @@ from pathlib import Path
 from .ollama_client import analyze
 from .video_assets import sha256_file
 from .tag_schema import Tags
+from pydantic import ValidationError
 
 VERSION = "v1"
 
@@ -38,6 +39,8 @@ def run(root, *, model="qwen2.5vl:7b", limit=5, retry_failed=False, analyzer=ana
             except Exception as exc:
                 status = "failed"
                 result = {"error":type(exc).__name__}
+                if isinstance(exc, ValidationError):
+                    result["validation_errors"] = [{"loc":e["loc"],"type":e["type"]} for e in exc.errors(include_input=False,include_url=False,include_context=False)]
                 report["errors"].append({"image_sha":sha,**result})
             with db:
                 db.execute("""INSERT OR REPLACE INTO image_tags
