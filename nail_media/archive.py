@@ -63,7 +63,7 @@ def stage_catalog(db, checkout):
     target.parent.mkdir(parents=True, exist_ok=True)
     staged = target.with_suffix(".jsonl.tmp")
     staged.write_text(
-        "".join(json.dumps(item, ensure_ascii=False) + "\\n" for item in records),
+        "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in records),
         encoding="utf-8",
     )
     staged.replace(target)
