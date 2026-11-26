@@ -32,6 +32,11 @@ def run(root):
     with sqlite3.connect(path) as db:
         db.execute("CREATE TABLE IF NOT EXISTS image_recommendations (image_sha TEXT,model TEXT,tag_version TEXT,rule_version TEXT,payload TEXT,PRIMARY KEY(image_sha,model,tag_version,rule_version))")
         rows=db.execute("SELECT image_sha,model,version,payload FROM image_tags WHERE version='v2' OR version LIKE 'v2:routed:%'").fetchall()
+        if db.execute("SELECT 1 FROM sqlite_master WHERE name='manual_tags' AND type='table'").fetchone():
+            manual=dict(db.execute("SELECT image_sha,payload FROM manual_tags"))
+            for sha in manual:
+                db.execute("DELETE FROM image_recommendations WHERE image_sha=?",(sha,))
+            rows=[r for r in rows if r[0] not in manual]+[(sha,"manual","v2",payload) for sha,payload in manual.items()]
         for sha,model,version,payload in rows:
             db.execute("INSERT OR REPLACE INTO image_recommendations VALUES (?,?,?,?,?)",(sha,model,version,VERSION,json.dumps(recommend(json.loads(payload)),ensure_ascii=False)))
     return {"processed":len(rows)}
