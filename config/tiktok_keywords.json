@@ -1,0 +1,29 @@
+{
+  "款式": [
+    "cat eye nails",
+    "french tip nails",
+    "ombre nails",
+    "chrome nails",
+    "marble nails",
+    "gel nails"
+  ],
+  "场景": [
+    "wedding nails",
+    "everyday nails",
+    "party nails"
+  ],
+  "颜色": [
+    "nude pink nails",
+    "burgundy nails",
+    "milky white nails"
+  ],
+  "季节": [
+    "spring nails",
+    "summer nails",
+    "fall nails",
+    "winter nails"
+  ],
+  "教程": [
+    "nail art tutorial"
+  ]
+}
