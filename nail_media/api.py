@@ -14,6 +14,9 @@ from .local_jobs import Jobs
 from fastapi import Request
 from pydantic import BaseModel, Field
 from typing import Literal
+from .tag_schema import TagsV2
+from pydantic import ValidationError
+import fcntl
 
 class JobInput(BaseModel):
     kind: Literal['index','tags','review','recommend']
@@ -35,6 +38,22 @@ def create_app(root=None):
             return jobs.start(body.kind,body.limit)
         except BlockingIOError:
             raise HTTPException(409,'Another production job is running')
+    @app.put('/api/assets/{sha}/review')
+    def manual_review(sha:str, body:TagsV2, request:Request):
+        if os.environ.get('NAIL_MEDIA_ENABLE_WRITES')!='1' or request.headers.get('origin') not in ('http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:8000'):
+            raise HTTPException(403,'Local writes disabled or invalid origin')
+        result=body.result()
+        try:
+            with (root/'production.lock').open('a') as guard:
+                fcntl.flock(guard,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                with sqlite3.connect(root/'catalog.sqlite3') as conn:
+                    if not conn.execute('SELECT 1 FROM crawler_assets WHERE sha256=?',(sha,)).fetchone():
+                        raise HTTPException(404,'Asset not found')
+                    conn.execute('CREATE TABLE IF NOT EXISTS manual_tags (image_sha TEXT PRIMARY KEY,payload TEXT NOT NULL,updated_at TEXT DEFAULT CURRENT_TIMESTAMP)')
+                    conn.execute('INSERT OR REPLACE INTO manual_tags(image_sha,payload) VALUES (?,?)',(sha,json.dumps(result,ensure_ascii=False)))
+        except BlockingIOError:
+            raise HTTPException(409,'Production job running')
+        return result
     encoder=None
     identity=DEFAULT_MODEL+":"+DEFAULT_WEIGHTS+":v1"
     def get_encoder():
@@ -70,7 +89,10 @@ def create_app(root=None):
             items=[]
             for sha,raw,status_value,tags in rows:
                 asset=json.loads(raw)
-                items.append({"image_sha":sha,"width":asset.get("width"),"height":asset.get("height"),"status":status_value or "pending","tags":json.loads(tags) if tags else {}})
+                manual=conn.execute("SELECT payload FROM manual_tags WHERE image_sha=?",(sha,)).fetchone() if "manual_tags" in tables else None
+                if manual:
+                    tags=manual[0]
+                items.append({"image_sha":sha,"width":asset.get("width"),"height":asset.get("height"),"status":"manual" if manual else (status_value or "pending"),"tags":json.loads(tags) if tags else {}})
             return {"total":total,"items":items}
     @app.get("/api/reviews")
     def reviews(limit:int=Query(100,ge=1,le=100),offset:int=Query(0,ge=0)):
