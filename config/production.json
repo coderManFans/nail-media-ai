@@ -1,0 +1,11 @@
+{
+  "collection_config": "collection.json",
+  "collect": false,
+  "model": "qwen2.5vl:7b",
+  "fallback_model": "qwen3.5:9b",
+  "video_limit": 20,
+  "tag_limit": 20,
+  "review_limit": 3,
+  "sync_checkout": null,
+  "interval_seconds": 3600
+}
