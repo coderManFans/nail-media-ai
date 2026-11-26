@@ -27,6 +27,26 @@ class Catalog:
                     observations = [{"platform":p,"keyword":k,"observed_sha":s,"match_type":m} for p,k,s,m in db.execute("SELECT platform,keyword,observed_sha,match_type FROM crawler_observations WHERE asset_sha=? ORDER BY platform,keyword,observed_sha",(sha,))]
                     record = {"id":sha,"record_type":"image_asset","sha256":sha,"phash":phash,"width":info["width"],"height":info["height"],"filename":Path(info["path"]).name,"license_status":"unknown","observations":observations}
                     rows.append((json.dumps(record,ensure_ascii=False),))
+            if {"video_assets", "video_sources"} <= tables:
+                for sha, payload in db.execute("SELECT sha256,payload FROM video_assets ORDER BY sha256"):
+                    asset = json.loads(payload)
+                    sources = [
+                        json.loads(source_payload)
+                        for (source_payload,) in db.execute(
+                            "SELECT payload FROM video_sources WHERE asset_sha=? ORDER BY media_id",
+                            (sha,),
+                        )
+                    ]
+                    record = {
+                        "id": sha, "record_type": "video_asset",
+                        "sha256": sha, "filename": asset["filename"],
+                        "width": asset["width"], "height": asset["height"],
+                        "size_bytes": asset["size_bytes"],
+                        "duration_seconds": asset["duration_seconds"],
+                        "license_status": asset.get("license_status", "unknown"),
+                        "sources": sources,
+                    }
+                    rows.append((json.dumps(record, ensure_ascii=False),))
         temp = path.with_suffix(".tmp")
         temp.write_text("".join(r[0] + "\n" for r in rows), encoding="utf-8")
         temp.replace(path)
