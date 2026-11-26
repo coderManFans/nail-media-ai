@@ -17,6 +17,14 @@ from typing import Literal
 from .tag_schema import TagsV2
 from pydantic import ValidationError
 import fcntl
+from . import tag_dictionary
+
+class DictionaryEdit(BaseModel):
+    category: Literal['colors','styles','nail_shape']
+    code: str = Field(min_length=1,max_length=80)
+    label: str = Field(default='',max_length=80)
+    enabled: bool = True
+    operation: Literal['create','update','delete'] = 'update'
 
 class JobInput(BaseModel):
     kind: Literal['index','tags','review','recommend','pipeline','resume']
@@ -89,6 +97,25 @@ def create_app(root=None):
         except BlockingIOError:
             raise HTTPException(409,'Production job running')
         return collection()
+    @app.get('/api/tag-dictionary')
+    def dictionary():
+        if not (root/'catalog.sqlite3').is_file():
+            raise HTTPException(503,'Catalog not initialized')
+        return tag_dictionary.list_tags(root/'catalog.sqlite3')
+    @app.post('/api/tag-dictionary')
+    def edit_dictionary(body:DictionaryEdit,request:Request):
+        if os.environ.get('NAIL_MEDIA_ENABLE_WRITES')!='1' or request.headers.get('origin') not in ('http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:5174','http://localhost:5174','http://127.0.0.1:8000'):
+            raise HTTPException(403,'Local writes disabled or invalid origin')
+        if not (root/'catalog.sqlite3').is_file():
+            raise HTTPException(503,'Catalog not initialized')
+        try:
+            return tag_dictionary.change(root/'catalog.sqlite3',**body.model_dump())
+        except sqlite3.IntegrityError:
+            raise HTTPException(409,'Duplicate tag code or label')
+        except KeyError:
+            raise HTTPException(404,'Tag not found')
+        except ValueError as exc:
+            raise HTTPException(422,str(exc))
     @app.get('/api/tag-schema')
     def tag_schema():
         return TagsV2.model_json_schema()
