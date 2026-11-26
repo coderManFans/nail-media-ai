@@ -10,11 +10,31 @@ from fastapi.responses import FileResponse
 from PIL import Image
 from .visual_search import Encoder, search, DEFAULT_MODEL, DEFAULT_WEIGHTS
 from .production_pipeline import status
+from .local_jobs import Jobs
+from fastapi import Request
+from pydantic import BaseModel, Field
+from typing import Literal
+
+class JobInput(BaseModel):
+    kind: Literal['index','tags','review','recommend']
+    limit: int = Field(default=10,ge=1,le=100)
 
 def create_app(root=None):
     root=Path(root or os.environ.get("NAIL_MEDIA_ROOT","runtime/media-library")).resolve()
     app=FastAPI(title="Nail Media AI")
     lock=Lock()
+    jobs=Jobs(root)
+    @app.get('/api/jobs')
+    def job_status():
+        return jobs.status()
+    @app.post('/api/jobs')
+    def start_job(body:JobInput, request:Request):
+        if os.environ.get('NAIL_MEDIA_ENABLE_WRITES')!='1' or request.headers.get('origin') not in ('http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:8000'):
+            raise HTTPException(403,'Local writes disabled or invalid origin')
+        try:
+            return jobs.start(body.kind,body.limit)
+        except BlockingIOError:
+            raise HTTPException(409,'Another production job is running')
     encoder=None
     identity=DEFAULT_MODEL+":"+DEFAULT_WEIGHTS+":v1"
     def get_encoder():
