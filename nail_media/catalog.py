@@ -70,6 +70,28 @@ class Catalog:
                             (key,))
                     ]
                     rows.append((json.dumps(record, ensure_ascii=False),))
+            specs = [
+                ("image_tags","image_tag",("image_sha","model","version"),("status",)),
+                ("image_recommendations","image_recommendation",("image_sha","model","tag_version","rule_version"),()),
+                ("video_frames","video_frame",("video_sha","frame_index","interval"),("image_sha",)),
+                ("image_cluster_members","image_cluster_member",("image_sha",),("cluster_id",)),
+            ]
+            for table,kind,keys,fields in specs:
+                if table not in tables:
+                    continue
+                columns = keys + fields
+                for row in db.execute("SELECT "+",".join(columns)+",payload FROM "+table+" ORDER BY "+",".join(keys)):
+                    record = dict(zip(columns,row[:-1]))
+                    record.update(id=json.dumps(row[:len(keys)],ensure_ascii=False,separators=(",",":")),record_type=kind)
+                    payload = json.loads(row[-1])
+                    allowed = {
+                        "image_tag": ("is_nail_art","content_type","nail_part","design_visibility","colors","styles","nail_shape","nail_length","decorations","finish","confidence","need_review","recommendation_eligible","review_reasons","selected_model","model_differences"),
+                        "image_recommendation": ("scenes","seasons","evidence"),
+                        "video_frame": ("estimated_seconds","quality"),
+                        "image_cluster_member": ("phash_distance","dhash_distance","color_distance","matched"),
+                    }[kind]
+                    record["data"] = {k:payload[k] for k in allowed if k in payload}
+                    rows.append((json.dumps(record,ensure_ascii=False),))
         temp = path.with_suffix(".tmp")
         temp.write_text("".join(r[0] + "\n" for r in rows), encoding="utf-8")
         temp.replace(path)
