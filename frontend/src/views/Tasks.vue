@@ -1,0 +1,8 @@
+<script setup lang="ts">
+import {useWorkspace} from '../composables/useWorkspace'
+import {zh,stageLabel,statusType} from '../labels'
+const {busy,runs,steps,authorized,job,kind,jobLimit,refreshJob,startJob,state}=useWorkspace()
+</script>
+<template>
+<div class="view-content"><div class="panel"><h3>本地后台任务</h3><div class="toolbar"><el-select v-model="kind"><el-option label="向量生成" value="index"/><el-option label="AI标签" value="tags"/><el-option label="备用模型复核" value="review"/><el-option label="推荐规则" value="recommend"/><el-option label="完整流水线" value="pipeline"/><el-option label="断点恢复" value="resume"/></el-select><el-checkbox v-model="authorized">确认已获采集授权</el-checkbox><el-input-number class="job-limit" v-model="jobLimit" :min="1" :max="100"/><el-button type="primary" :disabled="busy||job.state==='running'" @click="startJob">启动任务</el-button><el-button @click="refreshJob">刷新日志</el-button></div><p>状态：{{zh(job.state||'idle')}}</p><pre>{{job.log||'暂无日志'}}</pre></div><h3>最近运行</h3><el-table :data="runs"><el-table-column prop="id" label="运行ID"/><el-table-column label="状态" min-width="130"><template #default="s"><el-tag :type="statusType(s.row.state)">{{zh(s.row.state)}}</el-tag></template></el-table-column></el-table><h3>最新运行阶段</h3><el-table :data="steps"><el-table-column label="阶段" min-width="140"><template #default="s">{{stageLabel(s.row.name)}}</template></el-table-column><el-table-column label="状态" min-width="130"><template #default="s"><el-tag :type="statusType(s.row.state)">{{zh(s.row.state)}}</el-tag></template></el-table-column><el-table-column prop="seconds" label="耗时（秒）"/><el-table-column prop="payload" label="结果" show-overflow-tooltip/></el-table></div>
+</template>
