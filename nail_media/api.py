@@ -35,6 +35,29 @@ def create_app(root=None):
         with db() as conn:
             tables={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             return {t:conn.execute("SELECT COUNT(*) FROM "+t).fetchone()[0] if t in tables else 0 for t in ("crawler_assets","video_assets","image_clusters","image_tags","image_vectors","tag_review_queue")}
+    @app.get("/api/assets")
+    def assets(limit:int=Query(24,ge=1,le=100),offset:int=Query(0,ge=0),state:str=""):
+        with db() as conn:
+            tables={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if "crawler_assets" not in tables:
+                return {"total":0,"items":[]}
+            join=" LEFT JOIN image_tags t ON t.image_sha=a.sha256 AND t.model='qwen2.5vl:7b' AND t.version='v2'" if "image_tags" in tables else ""
+            where=" WHERE t.status=?" if state and join else ""
+            args=(state,) if where else ()
+            base=" FROM crawler_assets a"+join+where
+            total=conn.execute("SELECT COUNT(*)"+base,args).fetchone()[0]
+            rows=conn.execute("SELECT a.sha256,a.payload,"+("t.status,t.payload" if join else "NULL,NULL")+base+" ORDER BY a.sha256 LIMIT ? OFFSET ?",(*args,limit,offset))
+            items=[]
+            for sha,raw,status_value,tags in rows:
+                asset=json.loads(raw)
+                items.append({"image_sha":sha,"width":asset.get("width"),"height":asset.get("height"),"status":status_value or "pending","tags":json.loads(tags) if tags else {}})
+            return {"total":total,"items":items}
+    @app.get("/api/reviews")
+    def reviews(limit:int=Query(100,ge=1,le=100),offset:int=Query(0,ge=0)):
+        with db() as conn:
+            if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tag_review_queue'").fetchone():
+                return []
+            return [{"image_sha":sha,"primary_model":primary,"backup_model":backup,"state":state,"detail":json.loads(raw)} for sha,primary,backup,state,raw in conn.execute("SELECT image_sha,primary_model,backup_model,state,payload FROM tag_review_queue ORDER BY image_sha LIMIT ? OFFSET ?",(limit,offset))]
     @app.get("/api/pipeline")
     def pipeline():
         return status(root)
