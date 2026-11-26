@@ -38,7 +38,7 @@ def execute(root, stages, *, resume=False, identity="default"):
             db.execute("CREATE TABLE IF NOT EXISTS runs (id INTEGER PRIMARY KEY, identity TEXT, state TEXT)")
             db.execute("CREATE TABLE IF NOT EXISTS steps (run_id INTEGER, name TEXT, state TEXT, payload TEXT, seconds REAL, PRIMARY KEY(run_id,name))")
             if resume:
-                row=db.execute("SELECT id,identity FROM runs WHERE state!='success' ORDER BY id DESC LIMIT 1").fetchone()
+                row=db.execute("SELECT id,identity FROM runs WHERE state NOT IN ('success','success_with_warnings') ORDER BY id DESC LIMIT 1").fetchone()
                 if not row or row[1]!=identity:
                     raise ValueError("No compatible unfinished run")
                 run_id=row[0]
@@ -48,7 +48,7 @@ def execute(root, stages, *, resume=False, identity="default"):
             db.commit()
             for name,fn in stages:
                 row=db.execute("SELECT state FROM steps WHERE run_id=? AND name=?",(run_id,name)).fetchone()
-                if row and row[0]=="success":
+                if row and row[0] in ("success","warning"):
                     continue
                 start=time.monotonic()
                 try:
@@ -57,16 +57,19 @@ def execute(root, stages, *, resume=False, identity="default"):
                 except Exception as exc:
                     result={"error":type(exc).__name__}
                     failed=True
-                state="failed" if failed else "success"
+                soft = name=="review" and failed and "error" not in result and bool(result.get("failed"))
+                state="warning" if soft else ("failed" if failed else "success")
                 with db:
                     db.execute("INSERT OR REPLACE INTO steps VALUES (?,?,?,?,?)",(run_id,name,state,json.dumps(result,ensure_ascii=False),round(time.monotonic()-start,3)))
-                    if failed:
+                    if failed and not soft:
                         db.execute("UPDATE runs SET state='failed' WHERE id=?",(run_id,))
-                if failed:
+                if failed and not soft:
                     return {"run_id":run_id,"state":"failed","stage":name,"result":result}
+            warnings=[r[0] for r in db.execute("SELECT name FROM steps WHERE run_id=? AND state='warning'",(run_id,))]
+            final_state="success_with_warnings" if warnings else "success"
             with db:
-                db.execute("UPDATE runs SET state='success' WHERE id=?",(run_id,))
-            return {"run_id":run_id,"state":"success"}
+                db.execute("UPDATE runs SET state=? WHERE id=?",(final_state,run_id))
+            return {"run_id":run_id,"state":final_state,"warnings":warnings}
 
 def status(root):
     path=Path(root)/"production.sqlite3"
@@ -133,7 +136,7 @@ def main():
     while True:
         result=execute(root,stages,resume=a.resume,identity=identity)
         print(json.dumps(result,ensure_ascii=False,indent=2),flush=True)
-        if not a.daemon or result["state"]!="success":
+        if not a.daemon or result["state"] not in ("success","success_with_warnings"):
             return int(result["state"]!="success")
         time.sleep(max(60,cfg.get("interval_seconds",3600)))
 
