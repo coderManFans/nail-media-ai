@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 import httpx
 from .catalog import Catalog
+from .sync import sync
 from .task_store import TaskStore
 from .commons import CommonsCollector
 from .providers import ConfiguredSearch
@@ -24,7 +25,11 @@ def main():
     p.add_argument("--status",action="store_true")
     p.add_argument("--recover-after",type=int,default=3600,help="Recover RUNNING tasks older than this many seconds")
     p.add_argument("--reset-task",help="Reset a failed or interrupted task; stop other workers first")
+    p.add_argument("--sync-checkout",help="Opt-in metadata archive checkout")
+    p.add_argument("--confirm-authorized-private",action="store_true")
     a = p.parse_args()
+    if a.sync_checkout and not a.confirm_authorized_private:
+        p.error("Automatic sync requires --confirm-authorized-private")
     root = Path(a.root)
     tasks = json.loads(Path(a.tasks).read_text(encoding="utf-8"))
     approved = set(json.loads(Path(a.approved).read_text())) if a.approved else set()
@@ -56,6 +61,7 @@ def main():
                 providers["baidu"] = api
             elif os.getenv("APIHZ_ALLOW_FALLBACK") == "1":
                 providers["baidu"] = FallbackSearch(providers["baidu"],api)
+        next_sync = 0
         while True:
             for task in tasks:
                 if not task.get("enabled") or not store.claim(task["id"]):
@@ -71,6 +77,17 @@ def main():
                     print(json.dumps({"id":task["id"],"status":"failed","error":type(exc).__name__}),flush=True)
                     store.finish(task["id"],"failed",task["interval_hours"])
                 time.sleep(3)
+            if a.sync_checkout and time.monotonic() >= next_sync:
+                try:
+                    count = sync(catalog.path,a.sync_checkout,confirmed=True)
+                    result = {"sync":"success","records":count}
+                    next_sync = time.monotonic()+3600
+                except Exception as exc:
+                    result = {"sync":"failed","error":type(exc).__name__}
+                    next_sync = time.monotonic()+120
+                with (root/"sync-history.jsonl").open("a",encoding="utf-8") as out:
+                    out.write(json.dumps(result)+"\n")
+                print(json.dumps(result),flush=True)
             if a.once:
                 break
             time.sleep(30)
