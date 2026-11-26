@@ -19,8 +19,16 @@ from pydantic import ValidationError
 import fcntl
 
 class JobInput(BaseModel):
-    kind: Literal['index','tags','review','recommend']
+    kind: Literal['index','tags','review','recommend','pipeline','resume']
     limit: int = Field(default=10,ge=1,le=100)
+    authorized: bool = False
+
+class CollectionEdit(BaseModel):
+    id: str
+    keyword: str = Field(max_length=200)
+    limit: int = Field(ge=1,le=20)
+    interval_hours: int = Field(ge=1,le=8760)
+    enabled: bool
 
 def create_app(root=None):
     root=Path(root or os.environ.get("NAIL_MEDIA_ROOT","runtime/media-library")).resolve()
@@ -35,9 +43,11 @@ def create_app(root=None):
         if os.environ.get('NAIL_MEDIA_ENABLE_WRITES')!='1' or request.headers.get('origin') not in ('http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:8000'):
             raise HTTPException(403,'Local writes disabled or invalid origin')
         try:
-            return jobs.start(body.kind,body.limit)
+            return jobs.start(body.kind,body.limit,body.authorized)
         except BlockingIOError:
             raise HTTPException(409,'Another production job is running')
+        except (ValueError,PermissionError) as exc:
+            raise HTTPException(400,str(exc))
     @app.put('/api/assets/{sha}/review')
     def manual_review(sha:str, body:TagsV2, request:Request):
         if os.environ.get('NAIL_MEDIA_ENABLE_WRITES')!='1' or request.headers.get('origin') not in ('http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:8000'):
@@ -54,6 +64,34 @@ def create_app(root=None):
         except BlockingIOError:
             raise HTTPException(409,'Production job running')
         return result
+    @app.get('/api/collection')
+    def collection():
+        cfg=json.loads(Path('config/collection.json').read_text())
+        return [{k:t.get(k) for k in ('id','platform','keyword','limit','interval_hours','enabled','mode')} for t in cfg['tasks']]
+    @app.put('/api/collection')
+    def update_collection(body:list[CollectionEdit],request:Request):
+        if os.environ.get('NAIL_MEDIA_ENABLE_WRITES')!='1' or request.headers.get('origin') not in ('http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:8000'):
+            raise HTTPException(403,'Local writes disabled or invalid origin')
+        path=Path('config/collection.json')
+        root.mkdir(parents=True,exist_ok=True)
+        try:
+            with (root/'production.lock').open('a') as guard:
+                fcntl.flock(guard,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                cfg=json.loads(path.read_text())
+                edits={t.id:t for t in body}
+                if len(edits)!=len(body) or set(edits)!={t['id'] for t in cfg['tasks']}:
+                    raise HTTPException(422,'Task IDs must match existing configuration')
+                for task in cfg['tasks']:
+                    task.update(edits[task['id']].model_dump(exclude={'id'}))
+                temp=path.with_suffix('.tmp')
+                temp.write_text(json.dumps(cfg,ensure_ascii=False,indent=2))
+                temp.replace(path)
+        except BlockingIOError:
+            raise HTTPException(409,'Production job running')
+        return collection()
+    @app.get('/api/tag-schema')
+    def tag_schema():
+        return TagsV2.model_json_schema()
     encoder=None
     identity=DEFAULT_MODEL+":"+DEFAULT_WEIGHTS+":v1"
     def get_encoder():
