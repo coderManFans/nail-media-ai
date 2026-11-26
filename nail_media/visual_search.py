@@ -69,12 +69,14 @@ def search(root, encoder_id, query=None, *, limit=20, color=None, style=None, sh
     q=normalize(query) if query is not None else None
     path=(Path(root)/"catalog.sqlite3").resolve()
     with sqlite3.connect(path.as_uri()+"?mode=ro",uri=True) as db:
+        manual = dict(db.execute("SELECT image_sha,payload FROM manual_tags")) if db.execute("SELECT 1 FROM sqlite_master WHERE name='manual_tags' AND type='table'").fetchone() else {}
         rows=db.execute("""SELECT a.sha256,t.payload,v.dimension,v.vector
             FROM crawler_assets a JOIN image_clusters c ON c.representative_sha=a.sha256
             LEFT JOIN image_tags t ON t.image_sha=a.sha256 AND t.model=? AND t.version='v2'
             LEFT JOIN image_vectors v ON v.image_sha=a.sha256 AND v.encoder=?""",(tag_model,encoder_id))
         results=[]
         for sha,raw,dim,blob in rows:
+            raw=manual.get(sha,raw)
             tags=json.loads(raw) if raw else {}
             if eligible_only and not tags.get("recommendation_eligible"):
                 continue
