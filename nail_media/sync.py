@@ -9,6 +9,14 @@ def sync(db, checkout, *, confirmed=False):
     root = Path(checkout).resolve()
     def git(*args):
         return subprocess.check_output(["git","-C",str(root),*args],text=True).strip()
+    if git("remote","get-url","origin") not in {
+        "https://github.com/coderManFans/nail-media-data.git",
+        "https://github.com/coderManFans/nail-media-data",
+        "git@github.com:coderManFans/nail-media-data.git",
+    }:
+        raise ValueError("Unexpected archive repository")
+    if git("branch","--show-current") != "main":
+        raise ValueError("Archive checkout must be on main")
     if git("status","--porcelain"):
         raise ValueError("Archive checkout must be clean")
     git("pull","--ff-only","origin","main")
