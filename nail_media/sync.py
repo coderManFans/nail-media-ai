@@ -11,11 +11,12 @@ def sync(db, checkout, *, confirmed=False):
         return subprocess.check_output(["git","-C",str(root),*args],text=True).strip()
     if git("status","--porcelain"):
         raise ValueError("Archive checkout must be clean")
+    git("pull","--ff-only","origin","main")
     count = stage_catalog(db,root)
     git("add","--","catalog/media.jsonl")
     if git("diff","--cached","--name-only"):
         git("commit","-m","Update authorized media catalog","--","catalog/media.jsonl")
-    git("push","origin","HEAD")
+    git("push","origin","HEAD:main")
     return count
 
 def main():
