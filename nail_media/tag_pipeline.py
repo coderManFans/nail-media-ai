@@ -4,10 +4,10 @@ import sqlite3
 from pathlib import Path
 from .ollama_client import analyze
 from .video_assets import sha256_file
-from .tag_schema import Tags
+from .tag_schema import TagsV2 as Tags
 from pydantic import ValidationError
 
-VERSION = "v1"
+VERSION = "v2"
 
 def run(root, *, model="qwen2.5vl:7b", limit=5, retry_failed=False, analyzer=analyze):
     if not 1 <= limit <= 1000:
