@@ -71,6 +71,7 @@ class Catalog:
                     ]
                     rows.append((json.dumps(record, ensure_ascii=False),))
             specs = [
+                ("manual_tags","manual_tag",("image_sha",),()),
                 ("image_tags","image_tag",("image_sha","model","version"),("status",)),
                 ("image_recommendations","image_recommendation",("image_sha","model","tag_version","rule_version"),()),
                 ("video_frames","video_frame",("video_sha","frame_index","interval"),("image_sha",)),
@@ -85,6 +86,7 @@ class Catalog:
                     record.update(id=json.dumps(row[:len(keys)],ensure_ascii=False,separators=(",",":")),record_type=kind)
                     payload = json.loads(row[-1])
                     allowed = {
+                        "manual_tag": ("is_nail_art","content_type","nail_part","design_visibility","colors","styles","nail_shape","nail_length","decorations","finish","confidence","need_review","recommendation_eligible"),
                         "image_tag": ("is_nail_art","content_type","nail_part","design_visibility","colors","styles","nail_shape","nail_length","decorations","finish","confidence","need_review","recommendation_eligible","review_reasons","selected_model","model_differences"),
                         "image_recommendation": ("scenes","seasons","evidence"),
                         "video_frame": ("estimated_seconds","quality"),
