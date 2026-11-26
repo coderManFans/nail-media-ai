@@ -4,7 +4,7 @@ type Item={image_sha:string;status?:string;score?:number;tags?:Record<string,any
 const pages=['数据总览','素材管理','智能检索','标签管理','AI审核中心','任务管理','采集配置']
 const page=ref('数据总览'),busy=ref(false),error=ref('')
 const stats=ref<Record<string,number>>({}),items=ref<Item[]>([]),reviews=ref<any[]>([]),runs=ref<any[]>([]),steps=ref<any[]>([])
-const collection=ref<any[]>([]),authorized=ref(false),schema=ref<any>({}),formTags=ref<Record<string,any>>({}),advanced=ref(false)
+const collection=ref<any[]>([]),authorized=ref(false),schema=ref<Record<string, any>>({}),formTags=ref<Record<string,any>>({}),advanced=ref(false)
 async function saveCollection(){await action(async()=>{collection.value=await request('/collection',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(collection.value.map(t=>({...t,keyword:t.keyword||''})))})})}
 const job=ref<any>({}),kind=ref('index'),jobLimit=ref(10),draft=ref('')
 async function refreshJob(){await action(async()=>{job.value=await request('/jobs')})}
