@@ -1,4 +1,4 @@
-"""Offline import of authorized MediaCrawler Douyin exports."""
+"""Offline import of authorized MediaCrawler exports."""
 import argparse
 import json
 import re
@@ -12,7 +12,10 @@ from .video_assets import ingest_video, SUPPORTED_EXTENSIONS, validate_source
 from .catalog import Catalog
 
 
-def import_batch(source, root, limit=100):
+def import_batch(source, root, limit=100, platform="douyin"):
+    if platform not in {"douyin", "xiaohongshu"}:
+        raise ValueError("Unsupported platform")
+    xhs = platform == "xiaohongshu"
     source, root = Path(source).resolve(), Path(root).resolve()
     if not source.is_dir() or not 1 <= limit <= 1000:
         raise ValueError("Invalid source directory or limit")
@@ -30,7 +33,7 @@ def import_batch(source, root, limit=100):
             folders.setdefault(p.name, []).append(p)
     seen = set()
     for manifest in sorted(source.rglob("*.jsonl")):
-        if not manifest.name.startswith("search_contents_") or not manifest.resolve().is_relative_to(source):
+        if not manifest.name.startswith(("search_contents_", "detail_contents_")) or not manifest.resolve().is_relative_to(source):
             continue
         with manifest.open(encoding="utf-8") as fp:
             for line in fp:
@@ -40,11 +43,20 @@ def import_batch(source, root, limit=100):
                     continue
                 try:
                     row = json.loads(line)
-                    pid = str(row["aweme_id"])
-                    if not re.fullmatch(r"[0-9]{1,25}", pid):
+                    pid = str(row["note_id" if xhs else "aweme_id"])
+                    if not re.fullmatch(r"[0-9a-f]{24}" if xhs else r"[0-9]{1,25}", pid):
                         raise ValueError("Invalid post ID")
-                    url = str(row["aweme_url"])
-                    validate_source(url, "douyin")
+                    url = str(row["note_url" if xhs else "aweme_url"])
+                    if xhs:
+                        parts = urlsplit(url)
+                        if parts.scheme != "https" or parts.hostname not in {"www.xiaohongshu.com", "xiaohongshu.com"} or parts.username or parts.password:
+                            raise ValueError("Invalid note URL")
+                        url = "https://www.xiaohongshu.com/explore/" + pid if parts.path.rstrip("/").split("/")[-1] == pid else ""
+                        if not url:
+                            raise ValueError("Source ID mismatch")
+                    else:
+                        validate_source(url, platform)
+                    post_key = "xiaohongshu:" + pid if xhs else pid
                     if urlsplit(url).path.rstrip("/").split("/")[-1] != pid:
                         raise ValueError("Source ID mismatch")
                     if pid in seen:
@@ -52,12 +64,12 @@ def import_batch(source, root, limit=100):
                     seen.add(pid)
                     title = str(row.get("title") or "")[:1000]
                     keyword = str(row.get("source_keyword") or "")[:200]
-                    post = dict(platform="douyin", platform_id=pid, source_url=url,
+                    post = dict(platform=platform, platform_id=pid, source_url=url,
                                 title=title, description=str(row.get("desc") or "")[:10000],
-                                keyword=keyword, post_type=str(row.get("aweme_type") or ""),
-                                published_at=row.get("create_time"))
+                                keyword=keyword, post_type=str(row.get("type" if xhs else "aweme_type") or ""),
+                                published_at=row.get("time" if xhs else "create_time"))
                     with sqlite3.connect(db_path) as db:
-                        db.execute("INSERT OR REPLACE INTO imported_posts VALUES (?,?)", (pid,json.dumps(post,ensure_ascii=False)))
+                        db.execute("INSERT OR REPLACE INTO imported_posts VALUES (?,?)", (post_key,json.dumps(post,ensure_ascii=False)))
                     report["posts"] += 1
                     if not folders.get(pid):
                         report["errors"].append({"id":pid,"error":"missing_media_directory"})
@@ -67,7 +79,7 @@ def import_batch(source, root, limit=100):
                                 continue
                             try:
                                 if path.suffix.lower() in SUPPORTED_EXTENSIONS:
-                                    result = ingest_video(path,url,platform="douyin",root=root,db_path=db_path,title=title,platform_id=pid)
+                                    result = ingest_video(path,url,platform=platform,root=root,db_path=db_path,title=title,platform_id=pid)
                                     sha, kind = result["sha256"], "video"
                                 else:
                                     info = inspect_image(path)
@@ -87,9 +99,9 @@ def import_batch(source, root, limit=100):
                                             temp.unlink(missing_ok=True)
                                     with sqlite3.connect(db_path) as db:
                                         db.execute("INSERT OR IGNORE INTO crawler_assets VALUES (?,?,?)",(sha,info["phash"],json.dumps({**info,"path":str(target)})))
-                                        db.execute("INSERT OR IGNORE INTO crawler_observations VALUES (?,?,?,?,?)",("douyin",keyword,sha,sha,"original"))
+                                        db.execute("INSERT OR IGNORE INTO crawler_observations VALUES (?,?,?,?,?)",(platform,keyword,sha,sha,"original"))
                                 with sqlite3.connect(db_path) as db:
-                                    inserted = db.execute("INSERT OR IGNORE INTO imported_post_assets VALUES (?,?,?)",(pid,sha,kind)).rowcount
+                                    inserted = db.execute("INSERT OR IGNORE INTO imported_post_assets VALUES (?,?,?)",(post_key,sha,kind)).rowcount
                                 report[kind+"s" if inserted else "duplicates"] += 1
                             except Exception as exc:
                                 report["errors"].append({"id":pid,"file":path.name,"error":type(exc).__name__})
@@ -103,13 +115,13 @@ def import_batch(source, root, limit=100):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--platform",choices=["douyin"],required=True)
+    p.add_argument("--platform",choices=["douyin","xiaohongshu"],required=True)
     p.add_argument("--input",type=Path,required=True)
     p.add_argument("--root",type=Path,required=True)
     p.add_argument("--limit",type=int,default=100)
     p.add_argument("--confirm-authorized",action="store_true",required=True)
     a = p.parse_args()
-    report = import_batch(a.input,a.root,a.limit)
+    report = import_batch(a.input,a.root,a.limit,a.platform)
     print(json.dumps(report,ensure_ascii=False,indent=2))
     return 1 if report["errors"] or not report["posts"] else 0
 
